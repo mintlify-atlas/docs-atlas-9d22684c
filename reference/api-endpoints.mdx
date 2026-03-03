@@ -35,7 +35,7 @@ The extension requires an active X.com session. All requests are made with `cred
 Fetches user ID and following status in a single API call.
 
 **Endpoint:**
-```
+```text
 GET https://x.com/i/api/graphql/-oaLodhGbbnzJBACb1kk2Q/UserByScreenName
 ```
 
@@ -107,7 +107,7 @@ GET https://x.com/i/api/graphql/-oaLodhGbbnzJBACb1kk2Q/UserByScreenName
 Fetches user's originating country based on X.com's geolocation detection.
 
 **Endpoint:**
-```
+```text
 GET https://x.com/i/api/graphql/XRqGa7EeokUU5kppkh13EA/AboutAccountQuery
 ```
 
@@ -175,7 +175,7 @@ According to X.com, country detection is based on IP geolocation and is updated 
 Fetches paginated list of muted users (used for unmute operations).
 
 **Endpoint:**
-```
+```text
 GET https://x.com/i/api/graphql/5a30tCbggzoTACV_yr-cRA/MutedAccounts
 ```
 
@@ -224,14 +224,14 @@ GET https://x.com/i/api/graphql/5a30tCbggzoTACV_yr-cRA/MutedAccounts
 Mutes a user by their user ID using X.com's REST API v1.1.
 
 **Endpoint:**
-```
+```text
 POST https://x.com/i/api/1.1/mutes/users/create.json
 ```
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
 **Body:**
-```
+```text
 user_id=1234567890
 ```
 
@@ -248,14 +248,14 @@ If rate limited (429 status), the extension waits until the rate limit reset tim
 Unmutes a user by their user ID.
 
 **Endpoint:**
-```
+```text
 POST https://x.com/i/api/1.1/mutes/users/destroy.json
 ```
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
 **Body:**
-```
+```text
 user_id=1234567890
 ```
 
