@@ -1,0 +1,89 @@
+{
+  "projectType": "frontend",
+  "projectName": "xBlockOrigin",
+  "projectDescription": "Browser extension to automatically mute X.com users from specified countries using X's country detection feature",
+  "theme": "almond",
+  "primaryColor": "#1d9bf0",
+  "lightColor": "#8ecdf7",
+  "darkColor": "#0c7abf",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "User Guide",
+            "pages": [
+              "guide/managing-blacklist",
+              "guide/whitelist",
+              "guide/settings",
+              "guide/hidden-posts",
+              "guide/export-data"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/building",
+              "development/project-structure",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Technical Reference",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "reference/architecture",
+              "reference/api-endpoints",
+              "reference/storage",
+              "reference/caching"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "reference/content-scripts",
+              "reference/scanners",
+              "reference/popup-ui"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automatic country-based muting using X.com's AboutAccountQuery API",
+    "Instant post hiding with blurred overlay matching X.com theme",
+    "Customizable country blacklist with whitelist support",
+    "Following protection (skip muting users you follow)",
+    "Multi-page support (timeline, profiles, search, notifications)",
+    "Persistent cache with 24-hour TTL for countries and user IDs",
+    "Mute database tracking with CSV export",
+    "Cross-browser support (Chrome/Edge Manifest V3, Firefox Manifest V2)"
+  ],
+  "publicApiSurface": [
+    "getUserData(username) - Fetch user ID and following status",
+    "getCountry(username) - Get user's originating country",
+    "muteUser(userId) - Mute user via X.com API",
+    "unmuteUser(userId) - Unmute user via X.com API",
+    "saveMutedUser(user) - Save muted user to database",
+    "getAllMutedUsers() - Get all muted users",
+    "isWhitelisted(userId) - Check if user is whitelisted",
+    "countryCache - Persistent cache for country lookups",
+    "userIdCache - Persistent cache for user IDs",
+    "followingCache - Persistent cache for following status"
+  ]
+}
