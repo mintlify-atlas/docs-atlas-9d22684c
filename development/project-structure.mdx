@@ -1,0 +1,259 @@
+---
+title: Project structure
+description: Understanding the xBlockOrigin codebase organization
+---
+
+xBlockOrigin follows a feature-based architecture with clear separation of concerns. This guide explains the project structure and key directories.
+
+## Overview
+
+The project is organized as a monorepo with the extension code in `packages/extension/`:
+
+```
+xblockorigin/
+├── packages/
+│   └── extension/          # Main extension code
+│       ├── src/            # Source files
+│       ├── manifest.v2.json  # Firefox manifest
+│       └── manifest.v3.json  # Chrome manifest
+├── dist/                   # Build output (generated)
+│   ├── chrome/
+│   └── firefox/
+├── scripts/                # Build and automation scripts
+├── package.json            # Dependencies and scripts
+├── biome.json             # Linting and formatting config
+├── tsconfig.json          # TypeScript configuration
+└── README.md
+```
+
+## Source directory structure
+
+The `packages/extension/src/` directory contains all source code, organized by feature:
+
+```
+src/
+├── Api/                   # X.com GraphQL API integration
+├── Background/            # Background service worker
+├── Content/               # Content scripts and page scanners
+├── Popup/                 # Preact-based popup UI
+├── Storage/               # Data persistence layer
+└── Utils/                 # Shared utilities
+```
+
+## Api directory
+
+Handles all communication with X.com's GraphQL API:
+
+<CodeGroup>
+```typescript client.ts
+// Base GraphQL client for making authenticated requests
+```
+
+```typescript countryQuery.ts
+// Fetch user's originating country via AboutAccountQuery
+```
+
+```typescript muteQuery.ts
+// Mute users via CreateMute mutation
+```
+
+```typescript unmuteQuery.ts
+// Unmute users via REST API endpoint
+```
+
+```typescript userDataQuery.ts
+// Fetch user ID and following status via UserByScreenName
+```
+
+```typescript schemas.ts
+// Valibot schemas for runtime validation
+```
+</CodeGroup>
+
+<Note>
+  All API responses are validated using Valibot schemas to ensure type safety at runtime.
+</Note>
+
+## Background directory
+
+Contains the background service worker (Chrome) or background page (Firefox):
+
+- `index.ts` - Main background script entry point
+- Handles extension lifecycle events
+- Manages communication between content scripts and popup
+
+<Tip>
+  The background script remains minimal to reduce memory usage and improve performance.
+</Tip>
+
+## Content directory
+
+Content scripts that run on X.com pages:
+
+| File | Purpose |
+|------|--------|
+| `index.ts` | Main content script entry point |
+| `orchestrator.ts` | Coordinates user processing and muting logic |
+| `postHider.ts` | Applies blur overlay to posts from muted users |
+| `hiddenPostNotice.ts` | UI components for unhiding posts |
+| `timelineScanner.ts` | Scans timeline for user profiles |
+| `searchScanner.ts` | Scans search results |
+| `statusScanner.ts` | Scans post detail pages |
+| `replyScanner.ts` | Scans notifications and replies |
+| `profileScanner.ts` | Scans user profile pages |
+| `extractors.ts` | Extract user data from DOM elements |
+| `flagInjector.ts` | Inject country flags next to usernames |
+| `unmuteHandler.ts` | Handle unmute and whitelist actions |
+
+<Note>
+  Each scanner targets specific X.com page types and uses MutationObserver to detect dynamically loaded content.
+</Note>
+
+## Popup directory
+
+Preact-based UI components for the extension popup:
+
+### Main components
+
+- `App.tsx` - Root application component
+- `index.tsx` - Entry point that renders the app
+- `hooks.ts` - Custom Preact hooks
+
+### Feature sections
+
+- `BlacklistManager.tsx` / `BlacklistSection.tsx` - Country blacklist management
+- `WhitelistManager.tsx` / `WhitelistSection.tsx` - User whitelist management
+- `MutedUsersSection.tsx` / `MutedUsersTable.tsx` - Display muted users
+- `Settings.tsx` - Extension settings
+- `Stats.tsx` - Muting statistics
+- `ExportButton.tsx` - CSV export functionality
+- `DebugPanel.tsx` - Developer debugging tools
+
+### Subcomponents
+
+```
+components/
+├── UnmuteConfirmDialog.tsx     # Confirmation modal for unmuting
+├── UnmuteModeSelector.tsx      # Select unmute mode (all/country)
+└── UnmuteProgressDisplay.tsx   # Show unmute progress
+```
+
+### Static assets
+
+- `popup.html` - HTML shell for the popup
+- `themes.css` - Theme styles (light/dark/dim)
+- `theme-loader.js` - Detect and apply theme on load
+
+## Storage directory
+
+Data persistence layer using Chrome storage APIs:
+
+<CodeGroup>
+```typescript database.ts
+// Muted users database
+// Stores: username, userId, country, mutedAt timestamp
+```
+
+```typescript whitelist.ts
+// Whitelisted users
+// Stores: userId, username, whitelistedAt timestamp
+```
+
+```typescript settings.ts
+// Extension settings
+// Stores: country blacklist, preferences
+```
+
+```typescript schema.ts
+// Valibot schemas for storage validation
+```
+</CodeGroup>
+
+<Note>
+  Uses `chrome.storage.sync` for settings (syncs across devices) and `chrome.storage.local` for user data.
+</Note>
+
+## Utils directory
+
+Shared utility modules:
+
+| File | Purpose |
+|------|--------|
+| `cache.ts` | Persistent cache with TTL (24h for countries, 5min for following status) |
+| `rateLimit.ts` | API request queue for sequential processing |
+| `rateLimitState.ts` | Request queue state management |
+| `csvExporter.ts` | Export muted users to CSV format |
+| `countryFlags.ts` | Country name to flag emoji mapping |
+| `themeDetector.ts` | Detect X.com theme (light/dark/dim) |
+| `unmuteService.ts` | Bulk unmute operations |
+
+## Manifest files
+
+Two manifest versions for cross-browser compatibility:
+
+### manifest.v3.json (Chrome/Edge)
+
+- Uses Manifest V3 specification
+- Service worker instead of background page
+- Required for Chrome Web Store
+
+### manifest.v2.json (Firefox)
+
+- Uses Manifest V2 specification
+- Persistent background page
+- Required for Firefox Add-ons (V3 not fully supported)
+
+<Warning>
+  Never edit manifests directly in the `dist/` directory. Always edit the source manifest files in `packages/extension/`.
+</Warning>
+
+## Build output
+
+The `dist/` directory is generated during builds and contains browser-ready extensions:
+
+```
+dist/
+├── chrome/
+│   ├── manifest.json       # Copied from manifest.v3.json
+│   ├── content.js          # Bundled from src/Content/
+│   ├── background.js       # Bundled from src/Background/
+│   ├── popup.js            # Bundled from src/Popup/
+│   ├── popup.html
+│   ├── themes.css
+│   └── theme-loader.js
+└── firefox/
+    └── (same structure with manifest.v2.json)
+```
+
+<Tip>
+  The `dist/` directory is git-ignored. Always rebuild after pulling changes.
+</Tip>
+
+## Naming conventions
+
+The codebase follows these conventions:
+
+- **PascalCase** - Directories and React/Preact components (`Popup/`, `App.tsx`)
+- **camelCase** - Utility files and functions (`cache.ts`, `orchestrator.ts`)
+- **No semicolons** - Biome configuration enforces no semicolons
+- **Tab indentation** - 4-space tabs configured in Biome
+- **Lowercase comments** - Comments use lowercase for consistency
+
+## Architecture principles
+
+The project follows functional programming principles:
+
+<Warning>
+  Avoid OOP patterns like service classes or factories. Use functional modules instead.
+</Warning>
+
+### Key principles
+
+1. **Feature-based organization** - Related code stays together
+2. **Functional over OOP** - Pure functions and modules preferred
+3. **No barrel exports** - Import directly from source files
+4. **Files under 200 lines** - Split large files into focused modules
+5. **Runtime validation** - Use Valibot for type safety at runtime
+6. **Never use `any` or `as`** - Maintain strict type safety
+
+See the [contributing guidelines](/development/contributing) for detailed code style rules.

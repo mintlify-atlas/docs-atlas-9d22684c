@@ -1,0 +1,204 @@
+---
+title: Export data
+description: Export your muted users list to CSV format for backup, analysis, or record-keeping
+---
+
+xBlockOrigin allows you to export your entire muted users database to a CSV (Comma-Separated Values) file. This is useful for backup, data analysis, or keeping records of automatically muted accounts.
+
+## What's included in the export
+
+The CSV export includes all muted users with the following fields:
+
+- **username**: The user's @handle on X.com
+- **userId**: X.com's internal user ID (numeric)
+- **country**: The user's originating country (as detected by X.com)
+- **mutedAt**: Timestamp when the user was muted (ISO 8601 format)
+
+<Info>
+The export includes **all users** that were automatically muted by xBlockOrigin, not just currently blacklisted countries. This means you can see historical muting data even if you've changed your blacklist.
+</Info>
+
+## How to export your data
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar to open the popup interface.
+  </Step>
+  
+  <Step title="Scroll to the export button">
+    Find the **"Export to CSV"** button, typically located at the bottom of the muted users section.
+    
+    The button shows the number of users that will be exported: `"Export to CSV (X users)"`
+  </Step>
+  
+  <Step title="Click the export button">
+    Click **"Export to CSV (X users)"**.
+    
+    A CSV file will be automatically downloaded to your browser's default downloads folder.
+  </Step>
+  
+  <Step title="Access your exported file">
+    The file is named with the current date: `muted-users-YYYY-MM-DD.csv`
+    
+    For example: `muted-users-2026-03-03.csv`
+  </Step>
+</Steps>
+
+<Note>
+The export button is **disabled** if you have no muted users. It will show "Export to CSV (0 users)" and have a gray background.
+</Note>
+
+## CSV file format
+
+The exported CSV file has the following structure:
+
+```csv
+username,userId,country,mutedAt
+elonmusk,44196397,United States,2026-03-01T14:32:10.123Z
+jackdorsey,12,United States,2026-03-01T14:35:22.456Z
+exampleuser,123456789,Antarctica,2026-03-02T09:15:30.789Z
+```
+
+### Field descriptions
+
+| Field | Type | Description | Example |
+|-------|------|-------------|----------|
+| `username` | String | User's @handle without the @ symbol | `elonmusk` |
+| `userId` | String | X.com's internal numeric user ID | `44196397` |
+| `country` | String | User's originating country name | `United States` |
+| `mutedAt` | String | ISO 8601 timestamp with milliseconds | `2026-03-01T14:32:10.123Z` |
+
+<Tip>
+The CSV file can be opened in spreadsheet applications like Microsoft Excel, Google Sheets, LibreOffice Calc, or any text editor.
+</Tip>
+
+## Using the exported data
+
+### Open in spreadsheet software
+
+**Excel / Google Sheets**:
+1. Open the application
+2. Import or open the CSV file
+3. The data will be parsed into columns automatically
+4. You can sort, filter, and analyze the data
+
+**Tips for analysis**:
+- Sort by `country` to see which countries have the most muted users
+- Sort by `mutedAt` to see when users were muted chronologically
+- Filter by date range to analyze muting patterns over time
+- Create pivot tables to summarize data by country
+
+### Import into other tools
+
+The CSV format is widely supported and can be imported into:
+
+- **Database systems** (MySQL, PostgreSQL, SQLite)
+- **Data analysis tools** (Python pandas, R, Jupyter notebooks)
+- **Visualization tools** (Tableau, Power BI)
+- **Custom scripts** for automation or data processing
+
+### Backup and restore
+
+<Warning>
+xBlockOrigin does **not** currently support importing CSV files. The export is for backup and analysis purposes only. You cannot restore muted users from a CSV file.
+</Warning>
+
+To backup your data:
+
+1. Export to CSV regularly (weekly or monthly)
+2. Store the CSV files in a safe location (cloud storage, external drive)
+3. Keep multiple versions with different dates for version history
+
+## Technical implementation
+
+The export functionality is implemented in:
+
+- **UI Component**: `packages/extension/src/Popup/ExportButton.tsx`
+- **Export Logic**: `packages/extension/src/Utils/csvExporter.ts`
+
+### How it works
+
+<Steps>
+  <Step title="Data retrieval">
+    The extension retrieves all muted users from `chrome.storage.local` where they're stored as an array of `MutedUser` objects.
+  </Step>
+  
+  <Step title="CSV generation">
+    The `csvExporter.ts` utility converts the data to CSV format:
+    - Creates a header row with field names
+    - Converts each user object to a CSV row
+    - Handles special characters and escaping
+  </Step>
+  
+  <Step title="File download">
+    The `downloadCSV()` function:
+    - Creates a Blob object with the CSV data
+    - Generates a download URL using `URL.createObjectURL()`
+    - Creates a temporary `<a>` element with `download` attribute
+    - Triggers a click event to download the file
+    - Cleans up the URL and element
+  </Step>
+</Steps>
+
+### Source code reference
+
+From `ExportButton.tsx:10`:
+```typescript
+const handleExport = () => {
+  const filename = `muted-users-${new Date().toISOString().split('T')[0]}.csv`
+  downloadCSV(users, filename)
+}
+```
+
+The button is disabled when there are no users:
+```typescript
+disabled={users.length === 0}
+```
+
+## Filename convention
+
+Exported files use the naming pattern: `muted-users-YYYY-MM-DD.csv`
+
+- **YYYY**: 4-digit year
+- **MM**: 2-digit month (01-12)
+- **DD**: 2-digit day (01-31)
+
+Examples:
+- `muted-users-2026-03-03.csv`
+- `muted-users-2026-12-25.csv`
+- `muted-users-2027-01-01.csv`
+
+<Tip>
+This naming convention makes it easy to sort files chronologically and identify when each export was created.
+</Tip>
+
+## Export frequency recommendations
+
+<Accordion title="Weekly exports (recommended for active users)">
+If you frequently browse X.com and mute many users, export weekly to capture recent data. This helps track patterns and ensures you have recent backups.
+</Accordion>
+
+<Accordion title="Monthly exports (recommended for casual users)">
+If you browse X.com occasionally, monthly exports are sufficient. Export on the first day of each month for consistency.
+</Accordion>
+
+<Accordion title="Before major changes">
+Always export before:
+- Uninstalling the extension
+- Clearing browser data
+- Making major changes to your blacklist
+- Switching browsers or devices
+</Accordion>
+
+## Data privacy
+
+All exported data:
+
+- Is generated entirely from your local browser storage
+- Contains only information already visible in the extension popup
+- Is never sent to external servers
+- Remains on your device unless you manually share the file
+
+<Warning>
+The exported CSV file contains usernames and user IDs. Be mindful when sharing this file as it reveals which accounts you've muted.
+</Warning>

@@ -1,0 +1,559 @@
+---
+title: Page scanners
+description: How xBlockOrigin scanners detect and extract usernames from different X.com page types
+---
+
+xBlockOrigin uses specialized scanners for each X.com page type. Each scanner detects posts or user elements and extracts usernames for processing.
+
+## Scanner architecture
+
+All scanners follow a consistent pattern:
+
+```typescript
+export function scanTimeline(onUserFound: UsernameCallback): () => void {
+  // 1. Scan existing content on page load
+  const existingTweets = document.querySelectorAll('[data-testid="tweet"]')
+  for (const tweet of existingTweets) {
+    const username = extractUsernameFromTweet(tweet)
+    if (username) {
+      onUserFound(username, tweet)
+    }
+  }
+
+  // 2. Watch for new content with MutationObserver
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        // ... detect and process new elements ...
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+
+  // 3. Return cleanup function
+  return () => observer.disconnect()
+}
+```
+
+Each scanner:
+
+1. **Scans existing content** - Processes elements already on the page
+2. **Observes new content** - Uses `MutationObserver` to detect dynamically added elements
+3. **Returns cleanup function** - Disconnects observer when leaving the page
+
+<Note>
+The callback signature is `UsernameCallback = (username: string, element?: Element) => void`. The element parameter allows the orchestrator to hide posts immediately if needed.
+</Note>
+
+## Username extraction
+
+All scanners use shared extraction utilities:
+
+```typescript
+// packages/extension/src/Content/extractors.ts:12
+export function extractUsernameFromTweet(tweetElement: Element): string | null {
+  const userNameElement = tweetElement.querySelector(
+    '[data-testid="User-Name"]'
+  )
+
+  if (!userNameElement) {
+    return null
+  }
+
+  const link = userNameElement.querySelector('a[href^="/"]')
+  if (!link) {
+    return null
+  }
+
+  const href = link.getAttribute('href')
+  if (!href) {
+    return null
+  }
+
+  const match = href.match(/^\/([^/]+)$/)
+  return match?.[1] ?? null
+}
+
+export function extractUsernameFromLink(link: Element): string | null {
+  const href = link.getAttribute('href')
+  if (!href) {
+    return null
+  }
+
+  const match = href.match(/^\/([^/]+)/)
+  return match?.[1] ?? null
+}
+```
+
+Extraction strategy:
+
+- Looks for `[data-testid="User-Name"]` element in tweets
+- Finds the profile link (`a[href^="/"]`)
+- Extracts username from the href path using regex
+
+## Timeline scanner
+
+Scans the home timeline (`/home` or `/`).
+
+```typescript
+// packages/extension/src/Content/timelineScanner.ts:4
+export function scanTimeline(onUserFound: UsernameCallback): () => void {
+  // scan existing tweets
+  const existingTweets = document.querySelectorAll('[data-testid="tweet"]')
+  for (const tweet of existingTweets) {
+    const username = extractUsernameFromTweet(tweet)
+    if (username) {
+      onUserFound(username, tweet)
+    }
+  }
+
+  // watch for new tweets with mutationobserver
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue
+
+        // check if the added node is a tweet
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid === 'tweet'
+        ) {
+          const username = extractUsernameFromTweet(node)
+          if (username) {
+            onUserFound(username, node)
+          }
+        }
+
+        // check children for tweets
+        const tweets = node.querySelectorAll('[data-testid="tweet"]')
+        for (const tweet of tweets) {
+          const username = extractUsernameFromTweet(tweet)
+          if (username) {
+            onUserFound(username, tweet)
+          }
+        }
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+
+  return () => observer.disconnect()
+}
+```
+
+Detection strategy:
+
+- Finds all `[data-testid="tweet"]` elements
+- Checks both direct additions and nested tweets in added nodes
+- Fires as user scrolls and new tweets load
+
+<Tip>
+The timeline scanner catches tweets, retweets, and quoted tweets since they all use the same `data-testid="tweet"` attribute.
+</Tip>
+
+## Search scanner
+
+Scans search results (`/search`) including People, Top, and Latest tabs.
+
+```typescript
+// packages/extension/src/Content/searchScanner.ts:8
+function extractUsernameFromUserCell(cellElement: Element): string | null {
+  const link = cellElement.querySelector('a[href^="/"][role="link"]')
+  return link ? extractUsernameFromLink(link) : null
+}
+
+export function scanSearch(onUserFound: UsernameCallback): () => void {
+  const scanExisting = () => {
+    // scan user cells (people tab)
+    const userCells = document.querySelectorAll('[data-testid="UserCell"]')
+    for (const cell of userCells) {
+      const username = extractUsernameFromUserCell(cell)
+      if (username) {
+        onUserFound(username, cell)
+      }
+    }
+
+    // scan tweets (top/latest tabs)
+    const tweets = document.querySelectorAll('[data-testid="tweet"]')
+    for (const tweet of tweets) {
+      const username = extractUsernameFromTweet(tweet)
+      if (username) {
+        onUserFound(username, tweet)
+      }
+    }
+  }
+
+  scanExisting()
+
+  // watch for new results with mutationobserver
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue
+
+        // check if the added node is a user cell
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid === 'UserCell'
+        ) {
+          const username = extractUsernameFromUserCell(node)
+          if (username) {
+            onUserFound(username, node)
+          }
+        }
+
+        // check if the added node is a tweet
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid === 'tweet'
+        ) {
+          const username = extractUsernameFromTweet(node)
+          if (username) {
+            onUserFound(username, node)
+          }
+        }
+
+        // check children for user cells and tweets
+        const userCells = node.querySelectorAll('[data-testid="UserCell"]')
+        for (const cell of userCells) {
+          const username = extractUsernameFromUserCell(cell)
+          if (username) {
+            onUserFound(username, cell)
+          }
+        }
+
+        const tweets = node.querySelectorAll('[data-testid="tweet"]')
+        for (const tweet of tweets) {
+          const username = extractUsernameFromTweet(tweet)
+          if (username) {
+            onUserFound(username, tweet)
+          }
+        }
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+
+  return () => observer.disconnect()
+}
+```
+
+The search scanner handles two element types:
+
+<Tabs>
+  <Tab title="User cells">
+    **People tab** - Shows user profiles in search results
+
+    - Uses `[data-testid="UserCell"]` selector
+    - Extracts username from the profile link
+    - No tweet element available for hiding (processes user info only)
+  </Tab>
+  <Tab title="Tweets">
+    **Top/Latest tabs** - Shows individual tweets
+
+    - Uses `[data-testid="tweet"]` selector
+    - Standard tweet extraction logic
+    - Provides tweet element for immediate hiding
+  </Tab>
+</Tabs>
+
+## Status scanner
+
+Scans individual post pages (`/{username}/status/{id}`) showing a post and its replies.
+
+```typescript
+// packages/extension/src/Content/statusScanner.ts:4
+export function scanStatus(onUserFound: UsernameCallback): () => void {
+  const scanExisting = () => {
+    const tweets = document.querySelectorAll('[data-testid="tweet"]')
+    for (const tweet of tweets) {
+      const username = extractUsernameFromTweet(tweet)
+      if (username) {
+        onUserFound(username, tweet)
+      }
+    }
+  }
+
+  scanExisting()
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue
+
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid === 'tweet'
+        ) {
+          const username = extractUsernameFromTweet(node)
+          if (username) {
+            onUserFound(username, node)
+          }
+        }
+
+        const tweets = node.querySelectorAll('[data-testid="tweet"]')
+        for (const tweet of tweets) {
+          const username = extractUsernameFromTweet(tweet)
+          if (username) {
+            onUserFound(username, tweet)
+          }
+        }
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+
+  return () => observer.disconnect()
+}
+```
+
+This scanner:
+
+- Detects the main post author
+- Detects reply authors as they load
+- Works identically to timeline scanner (both scan `[data-testid="tweet"]`)
+
+<Note>
+The status page includes the original post plus all replies, so this scanner processes multiple users per page.
+</Note>
+
+## Reply scanner
+
+Scans the notifications/mentions page (`/notifications`).
+
+```typescript
+// packages/extension/src/Content/replyScanner.ts:4
+function extractUsernameFromNotification(element: Element): string | null {
+  const link = element.querySelector('a[href^="/"][role="link"]')
+  return link ? extractUsernameFromLink(link) : null
+}
+
+export function scanReplies(onUserFound: UsernameCallback): () => void {
+  const scanExisting = () => {
+    // notifications use various testids, scan all cells
+    const cells = document.querySelectorAll('[data-testid*="cell"]')
+
+    for (const cell of cells) {
+      const username = extractUsernameFromNotification(cell)
+      if (username) {
+        onUserFound(username, cell)
+      }
+    }
+
+    // also scan tweets in notifications tab
+    const tweets = document.querySelectorAll('[data-testid="tweet"]')
+    for (const tweet of tweets) {
+      const userNameElement = tweet.querySelector(
+        '[data-testid="User-Name"]'
+      )
+      if (!userNameElement) continue
+
+      const link = userNameElement.querySelector('a[href^="/"]')
+      if (!link) continue
+
+      const username = extractUsernameFromLink(link)
+
+      if (username) {
+        onUserFound(username, tweet)
+      }
+    }
+  }
+
+  scanExisting()
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue
+
+        // check if the added node is a cell
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid?.includes('cell')
+        ) {
+          const username = extractUsernameFromNotification(node)
+          if (username) {
+            onUserFound(username, node)
+          }
+        }
+
+        // check if the added node is a tweet
+        if (
+          node instanceof HTMLElement &&
+          node.dataset.testid === 'tweet'
+        ) {
+          const userNameElement = node.querySelector(
+            '[data-testid="User-Name"]'
+          )
+          if (userNameElement) {
+            const link = userNameElement.querySelector('a[href^="/"]')
+            if (link) {
+              const username = extractUsernameFromLink(link)
+              if (username) {
+                onUserFound(username, node)
+              }
+            }
+          }
+        }
+
+        // check children for cells and tweets
+        const cells = node.querySelectorAll('[data-testid*="cell"]')
+        for (const cell of cells) {
+          const username = extractUsernameFromNotification(cell)
+          if (username) {
+            onUserFound(username, cell)
+          }
+        }
+
+        const tweets = node.querySelectorAll('[data-testid="tweet"]')
+        for (const tweet of tweets) {
+          const userNameElement = tweet.querySelector(
+            '[data-testid="User-Name"]'
+          )
+          if (userNameElement) {
+            const link = userNameElement.querySelector('a[href^="/"]')
+            if (link) {
+              const username = extractUsernameFromLink(link)
+              if (username) {
+                onUserFound(username, tweet)
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+
+  return () => observer.disconnect()
+}
+```
+
+The notifications page uses inconsistent element structure, so this scanner:
+
+- Scans any element with `data-testid` containing "cell"
+- Also scans standard tweet elements
+- Extracts usernames from the first profile link found
+
+<Tip>
+The generic `[data-testid*="cell"]` selector catches notifications about likes, retweets, follows, and mentions.
+</Tip>
+
+## Profile scanner
+
+Scans user profile pages (`/{username}`).
+
+```typescript
+// packages/extension/src/Content/profileScanner.ts:4
+function extractUsernameFromURL(): string | null {
+  const path = window.location.pathname
+
+  // profile urls are /{username} or /{username}/...
+  const match = path.match(/^\/([^/]+)/)
+  const username = match?.[1]
+
+  if (!username) {
+    return null
+  }
+
+  // filter out x.com system pages
+  const systemPages = [
+    'home',
+    'explore',
+    'notifications',
+    'messages',
+    'settings',
+    'compose',
+    'i',
+    'search'
+  ]
+
+  if (systemPages.includes(username.toLowerCase())) {
+    return null
+  }
+
+  return username
+}
+
+export function scanProfile(onUserFound: UsernameCallback): () => void {
+  const username = extractUsernameFromURL()
+
+  if (username) {
+    onUserFound(username)
+  }
+
+  // watch for url changes (spa navigation)
+  let lastUrl = window.location.href
+  const observer = setInterval(() => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href
+      const newUsername = extractUsernameFromURL()
+      if (newUsername) {
+        onUserFound(newUsername)
+      }
+    }
+  }, 1000)
+
+  return () => clearInterval(observer)
+}
+```
+
+The profile scanner is unique:
+
+- **Extracts username from URL** instead of DOM elements
+- **No element parameter** - Can't hide posts on profile pages (would hide the entire profile)
+- **Polls for URL changes** - Uses `setInterval` instead of `MutationObserver`
+- **Filters system pages** - Excludes X.com's built-in pages like `/home`, `/explore`
+
+<Note>
+Profile scanning doesn't hide individual posts - it processes the profile owner's username to potentially mute them. Individual posts from other users (e.g., in replies) are not scanned on profile pages.
+</Note>
+
+## Scanner selection
+
+The orchestrator selects the appropriate scanner based on the current page:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:294
+const startScanners = (page: string) => {
+  switch (page) {
+    case 'timeline':
+      cleanupFns.push(scanTimeline(handleUser))
+      break
+    case 'search':
+      cleanupFns.push(scanSearch(handleUser))
+      break
+    case 'notifications':
+      cleanupFns.push(scanReplies(handleUser))
+      break
+    case 'status':
+      cleanupFns.push(scanStatus(handleUser))
+      break
+    case 'profile':
+      cleanupFns.push(scanProfile(handleUser))
+      break
+  }
+}
+```
+
+See [Content scripts](/reference/content-scripts#page-detection) for page detection logic.

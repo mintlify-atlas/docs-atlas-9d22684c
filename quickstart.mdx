@@ -1,80 +1,290 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get started with xBlockOrigin in minutes
 ---
 
-## Get started in three steps
+This guide will walk you through installing xBlockOrigin, configuring your first country blacklist, and seeing it work on X.com.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+Before starting, make sure you're logged into X.com. The extension requires an active X.com session to function.
+</Note>
 
-### Step 1: Set up your local environment
+## Installation
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+First, install the extension for your browser. Follow the detailed instructions in our [installation guide](/installation), or use the quick steps below:
+
+<Steps>
+  <Step title="Download the extension">
+    Download the appropriate version from [GitLab Releases](https://gitlab.com/yourproject/xblockorigin/-/releases):
+    - Chrome/Edge: `xblockorigin-chrome-rX.zip`
+    - Firefox: `xblockorigin-firefox-rX.zip`
+  </Step>
+  <Step title="Install in your browser">
+    <Tabs>
+      <Tab title="Chrome/Edge">
+        1. Unzip to a permanent folder
+        2. Go to `chrome://extensions/`
+        3. Enable "Developer mode"
+        4. Click "Load unpacked"
+        5. Select the unzipped folder
+      </Tab>
+      <Tab title="Firefox (Dev/Nightly/ESR)">
+        1. Go to `about:config`
+        2. Set `xpinstall.signatures.required` to `false`
+        3. Go to `about:addons`
+        4. Click gear icon → "Install Add-on From File"
+        5. Select the downloaded ZIP file
+      </Tab>
+      <Tab title="Firefox (Standard)">
+        1. Go to `about:debugging#/runtime/this-firefox`
+        2. Click "Load Temporary Add-on..."
+        3. Select the ZIP file or `manifest.json` from extracted folder
+        
+        <Warning>
+        The extension will be removed when Firefox restarts
+        </Warning>
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Verify installation">
+    Look for the xBlockOrigin icon in your browser's extension toolbar
+  </Step>
+</Steps>
+
+## Configure your first country blacklist
+
+Now let's add a country to your blacklist:
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar to open the popup interface
+  </Step>
+  <Step title="Add a country">
+    In the "Country Blacklist" section:
+    1. Enter a country name in the input field (e.g., "United States", "Russia", "Antarctica")
+    2. Click the **"Add"** button
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    <Note>
+    Country names must match X.com's country detection format. Use full country names like "United States" rather than abbreviations.
+    </Note>
+  </Step>
+  <Step title="Verify the country was added">
+    The country should now appear in your blacklist below the input field
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    You can add multiple countries by repeating the process
+  </Step>
+  <Step title="Configure settings (optional)">
+    Click the "Settings" tab to customize behavior:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    - **Show country flags**: Display flags next to usernames (visual indicator)
+    - **Also mute users you are following**: By default, users you follow are NOT muted. Enable this to mute everyone from blacklisted countries, even users you follow
+    
+    <Warning>
+    Enabling "Also mute users you are following" will mute your followed users from blacklisted countries. Most users should keep this disabled.
+    </Warning>
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## See it in action
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Now let's browse X.com and watch xBlockOrigin automatically mute users:
 
-### Step 3: Go live
+<Steps>
+  <Step title="Navigate to X.com">
+    Open [X.com](https://x.com) in a new tab (make sure you're logged in)
+  </Step>
+  <Step title="Browse your timeline">
+    Scroll through your timeline, search results, or visit user profiles
+    
+    The extension works on:
+    - Timeline (home feed)
+    - Search results
+    - User profiles
+    - Post detail pages with replies
+    - Notifications
+  </Step>
+  <Step title="Watch posts get hidden">
+    When xBlockOrigin detects a user from a blacklisted country:
+    
+    1. The post is **immediately hidden** with a 50% opacity overlay and 8px blur
+    2. The overlay adapts to your X.com theme (light or dark mode)
+    3. A toast notification appears: "Muted @username (Country)"
+    4. The user is muted via X.com's API
+  </Step>
+  <Step title="Interact with hidden posts (optional)">
+    You have several options for interacting with hidden posts:
+    
+    **Option 1: Unhide the post**
+    - Click **"Unhide"** on the overlay to reveal the post content
+    - A notice appears: "Post unhidden, but user is still muted"
+    - The user remains muted on X.com
+    
+    **Option 2: Unmute and whitelist**
+    - Click **"Unmute and whitelist"** on the overlay
+    - The user is unmuted via X.com's API
+    - The user is added to your whitelist (never muted again)
+    - All of their posts are unhidden immediately
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+## Managing whitelisted users
+
+Whitelist users you never want to mute, regardless of their country:
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser's extensions toolbar to open the popup
+  </Step>
+  <Step title="Add a user to whitelist">
+    In the "Whitelisted Users" section:
+    1. Enter a username (without the @ symbol)
+    2. Click **"Add"**
+    
+    <Note>
+    Whitelisted users are never muted, even if they're from a blacklisted country
+    </Note>
+  </Step>
+  <Step title="Remove from whitelist">
+    Click the **"×"** button next to any username to remove them from the whitelist
+  </Step>
+</Steps>
+
+## Viewing muted users
+
+Track all users that have been automatically muted:
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon to see the muted users list
+  </Step>
+  <Step title="Browse muted users">
+    The popup displays:
+    - Total number of muted users
+    - Statistics about top countries
+    - Sortable list by username, country, or mute date
+  </Step>
+  <Step title="Export to CSV">
+    Click **"Export to CSV"** to download a CSV file containing:
+    - Username
+    - User ID
+    - Country
+    - Timestamp when muted
+    
+    <Note>
+    Great for backing up your data or analyzing muting patterns
+    </Note>
+  </Step>
+</Steps>
+
+## Understanding the cache
+
+xBlockOrigin uses intelligent caching to minimize API requests:
+
+- **User IDs**: Cached for 24 hours
+- **Countries**: Cached for 24 hours
+- **Following status**: Cached for 5 minutes
+- **In-flight requests**: Prevents duplicate API calls for the same user
+
+<Note>
+This means that if a user's country changes (X updates this every 30 days), xBlockOrigin will pick up the change within 24 hours when the cache expires.
+</Note>
+
+## Privacy and security
+
+xBlockOrigin is built with privacy in mind:
+
+<CardGroup cols={2}>
+  <Card title="Local storage" icon="hard-drive">
+    All data (blacklist, whitelist, muted users) is stored locally on your device using Chrome's secure storage APIs
+  </Card>
+  <Card title="No external servers" icon="shield-check">
+    xBlockOrigin never sends data to external servers - it only communicates with X.com's official API
+  </Card>
+  <Card title="Sync storage" icon="cloud">
+    Country blacklist and settings use `chrome.storage.sync` to sync across your devices (if you're logged into Chrome/Firefox)
+  </Card>
+  <Card title="Open source" icon="code">
+    The entire codebase is open source and available for review on GitLab
+  </Card>
+</CardGroup>
+
+## Advanced features
+
+### Request queue optimization
+
+xBlockOrigin processes API requests efficiently:
+- All requests are queued and processed sequentially (no concurrent requests)
+- Combined `UserByScreenName` call fetches both user ID and following status in a single request
+- In-flight request tracking prevents duplicate API calls
+
+### Multi-page support
+
+The extension uses specialized scanners for different X.com pages:
+- **Timeline scanner**: Monitors your home feed
+- **Search scanner**: Processes search results
+- **Profile scanner**: Scans user profile pages
+- **Status scanner**: Handles post detail pages
+- **Reply scanner**: Processes notifications and replies
+
+### Post hiding overlay
+
+The overlay system preserves post functionality:
+- Original post remains in the DOM with all click handlers intact
+- Overlay uses 50% opacity background matching your theme
+- 8px blur effect for visual obscuration
+- Click "Unhide" to interact with the post without unmuting the user
+
+## Troubleshooting
+
+### Posts aren't being hidden
+
+<Steps>
+  <Step title="Check you're logged in">
+    xBlockOrigin requires an active X.com session. Log in to X.com and refresh the page.
+  </Step>
+  <Step title="Verify country is in blacklist">
+    Open the extension popup and confirm the country is listed in your blacklist
+  </Step>
+  <Step title="Check following protection">
+    If "Also mute users you are following" is disabled (default), users you follow won't be muted
+  </Step>
+  <Step title="Clear cache">
+    Countries are cached for 24 hours. If you just added a country, previously scanned users won't be re-checked until cache expires
+  </Step>
+</Steps>
+
+### Extension stopped working
+
+<Warning>
+X.com's API may change, requiring updates to query IDs. Check for extension updates on the GitLab Releases page.
+</Warning>
+
+1. Check browser console for errors (F12 → Console)
+2. Verify extension is enabled in your browser's extensions page
+3. Try disabling and re-enabling the extension
+4. Check for updated versions on GitLab
+
+### Country detection seems wrong
+
+<Note>
+Country detection is based on X's geolocation of the user's IP address. According to X, this is updated every 30 days. If a user uses a VPN or travels, their detected country may not match their actual location.
+</Note>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+You're now ready to use xBlockOrigin effectively! Here are some suggestions:
+
+- Add multiple countries to your blacklist for comprehensive filtering
+- Whitelist trusted users from blacklisted countries
+- Export your muted users list regularly for backup
+- Customize settings to match your preferences
+- Check the GitLab repository for updates and new features
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation guide" icon="download" href="/installation">
+    Detailed installation instructions for all browsers
+  </Card>
+  <Card title="GitHub repository" icon="github" href="https://github.com/chefnaphtha/xBlockOrigin">
+    View source code, report issues, and contribute
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

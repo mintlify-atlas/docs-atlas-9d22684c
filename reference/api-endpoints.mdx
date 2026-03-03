@@ -1,0 +1,303 @@
+---
+title: API endpoints
+description: X.com GraphQL and REST API endpoints used by xBlockOrigin for user data, country detection, and muting operations
+---
+
+xBlockOrigin interacts with X.com's official APIs using authenticated requests with CSRF tokens and bearer authentication.
+
+## Authentication
+
+All API requests require authentication headers extracted from the user's active X.com session:
+
+<ParamField header="authorization" type="string" required>
+  Bearer token used by X.com web client:
+  ```
+  Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA
+  ```
+</ParamField>
+
+<ParamField header="x-csrf-token" type="string" required>
+  CSRF token extracted from `ct0` cookie value
+</ParamField>
+
+<ParamField header="x-twitter-auth-type" type="string" required>
+  Always set to `OAuth2Session`
+</ParamField>
+
+<Warning>
+The extension requires an active X.com session. All requests are made with `credentials: 'include'` to send session cookies.
+</Warning>
+
+## GraphQL endpoints
+
+### UserByScreenName
+
+Fetches user ID and following status in a single API call.
+
+**Endpoint:**
+```
+GET https://x.com/i/api/graphql/-oaLodhGbbnzJBACb1kk2Q/UserByScreenName
+```
+
+**Query ID:** `-oaLodhGbbnzJBACb1kk2Q`
+
+**Variables:**
+```json
+{
+  "screen_name": "username",
+  "withSafetyModeUserFields": true
+}
+```
+
+**Features parameter:**
+```json
+{
+  "creator_subscriptions_tweet_preview_api_enabled": true,
+  "hidden_profile_subscriptions_enabled": true,
+  "highlights_tweets_tab_ui_enabled": true,
+  "profile_label_improvements_pcf_label_in_post_enabled": true,
+  "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+  "responsive_web_graphql_timeline_navigation_enabled": true,
+  "responsive_web_profile_redirect_enabled": false,
+  "responsive_web_twitter_article_notes_tab_enabled": true,
+  "rweb_tipjar_consumption_enabled": true,
+  "subscriptions_feature_can_gift_premium": true,
+  "subscriptions_verification_info_is_identity_verified_enabled": true,
+  "subscriptions_verification_info_verified_since_enabled": true,
+  "verified_phone_label_enabled": false
+}
+```
+
+**Response schema:**
+<ResponseField name="data.user.result.__typename" type="string" required>
+  Always `"User"`
+</ResponseField>
+
+<ResponseField name="data.user.result.rest_id" type="string" required>
+  The user's numeric ID
+</ResponseField>
+
+<ResponseField name="data.user.result.relationship_perspectives.following" type="boolean">
+  Whether you are following this user (defaults to `false` if not present)
+</ResponseField>
+
+**Example response:**
+```json
+{
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "rest_id": "1234567890",
+        "relationship_perspectives": {
+          "following": true
+        }
+      }
+    }
+  }
+}
+```
+
+**Cache:** User ID cached for 24 hours, following status cached for 5 minutes
+
+---
+
+### AboutAccountQuery
+
+Fetches user's originating country based on X.com's geolocation detection.
+
+**Endpoint:**
+```
+GET https://x.com/i/api/graphql/XRqGa7EeokUU5kppkh13EA/AboutAccountQuery
+```
+
+**Query ID:** `XRqGa7EeokUU5kppkh13EA`
+
+**Variables:**
+```json
+{
+  "screenName": "username"
+}
+```
+
+**Response schema:**
+<ResponseField name="data.user_result_by_screen_name.result.about_profile" type="object">
+  Account information object (may be `null` if not available)
+</ResponseField>
+
+<ResponseField name="data.user_result_by_screen_name.result.about_profile.account_based_in" type="string" required>
+  Country name (e.g., "United States", "Japan", "Antarctica")
+</ResponseField>
+
+<ResponseField name="data.user_result_by_screen_name.result.about_profile.location_accurate" type="boolean">
+  Whether the country detection is accurate
+</ResponseField>
+
+<ResponseField name="data.user_result_by_screen_name.result.about_profile.learn_more_url" type="string">
+  URL with more information about country detection
+</ResponseField>
+
+<ResponseField name="data.user_result_by_screen_name.result.about_profile.source" type="string">
+  Source of country detection (e.g., "IP address")
+</ResponseField>
+
+**Example response:**
+```json
+{
+  "data": {
+    "user_result_by_screen_name": {
+      "result": {
+        "about_profile": {
+          "account_based_in": "United States",
+          "location_accurate": true,
+          "learn_more_url": "https://help.x.com/...",
+          "source": "IP address",
+          "username_changes": {
+            "count": "0"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Cache:** Country cached for 24 hours
+
+<Note>
+According to X.com, country detection is based on IP geolocation and is updated every 30 days.
+</Note>
+
+---
+
+### MutedAccounts
+
+Fetches paginated list of muted users (used for unmute operations).
+
+**Endpoint:**
+```
+GET https://x.com/i/api/graphql/5a30tCbggzoTACV_yr-cRA/MutedAccounts
+```
+
+**Query ID:** `5a30tCbggzoTACV_yr-cRA`
+
+**Variables:**
+```json
+{
+  "count": 20,
+  "includePromotedContent": false,
+  "cursor": "optional-pagination-cursor"
+}
+```
+
+**Response schema:**
+<ResponseField name="data.viewer.muting_timeline.timeline.instructions" type="array" required>
+  Array of timeline instructions containing entries
+</ResponseField>
+
+<ResponseField name="instructions[].entries" type="array">
+  Array of user entries and cursor entries
+</ResponseField>
+
+<ResponseField name="entries[].content.itemContent.user_results.result.rest_id" type="string">
+  User ID of muted user
+</ResponseField>
+
+<ResponseField name="entries[].content.itemContent.user_results.result.core.screen_name" type="string">
+  Username of muted user
+</ResponseField>
+
+<ResponseField name="entries[].content.cursorType" type="string">
+  Cursor type (e.g., `"Bottom"` for next page cursor)
+</ResponseField>
+
+<ResponseField name="entries[].content.value" type="string">
+  Cursor value for pagination
+</ResponseField>
+
+---
+
+## REST API endpoints
+
+### Create mute
+
+Mutes a user by their user ID using X.com's REST API v1.1.
+
+**Endpoint:**
+```
+POST https://x.com/i/api/1.1/mutes/users/create.json
+```
+
+**Content-Type:** `application/x-www-form-urlencoded`
+
+**Body:**
+```
+user_id=1234567890
+```
+
+**Response:**
+Returns the muted user object on success (200 OK).
+
+**Rate limiting:**
+If rate limited (429 status), the extension waits until the rate limit reset time specified in `x-rate-limit-reset` header.
+
+---
+
+### Destroy mute (unmute)
+
+Unmutes a user by their user ID.
+
+**Endpoint:**
+```
+POST https://x.com/i/api/1.1/mutes/users/destroy.json
+```
+
+**Content-Type:** `application/x-www-form-urlencoded`
+
+**Body:**
+```
+user_id=1234567890
+```
+
+**Response:**
+Returns the unmuted user object on success (200 OK).
+
+---
+
+## Rate limiting
+
+All API endpoints implement automatic rate limit handling:
+
+1. **Detection** - 429 status code indicates rate limiting
+2. **Reset time** - Read from `x-rate-limit-reset` header (Unix timestamp)
+3. **Wait** - Extension waits until reset time
+4. **Retry** - Automatically retries the request after waiting
+
+<Warning>
+Rate limit state is tracked per endpoint using the `rateLimitState` utility to prevent requests before the reset time.
+</Warning>
+
+**Example rate limit handling:**
+```typescript
+if (response.status === 429) {
+  const resetHeader = response.headers.get('x-rate-limit-reset')
+  if (resetHeader) {
+    const resetTime = parseInt(resetHeader) * 1000
+    const waitTime = resetTime - Date.now()
+    await new Promise(resolve => setTimeout(resolve, waitTime))
+    return makeRequest() // retry
+  }
+}
+```
+
+## Request queue
+
+All API requests are processed sequentially through a request queue:
+
+- **Sequential processing** - Only one request at a time
+- **In-flight tracking** - Prevents duplicate requests for same user
+- **Navigation clearing** - Queue is cleared when user navigates to new page
+
+<Note>
+Sequential processing prevents hitting rate limits too quickly and ensures consistent ordering of operations.
+</Note>

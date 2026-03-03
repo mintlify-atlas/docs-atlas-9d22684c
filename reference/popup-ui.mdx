@@ -1,0 +1,645 @@
+---
+title: Popup UI
+description: Preact-based popup interface for managing settings, blacklist, whitelist, and viewing muted users
+---
+
+xBlockOrigin's popup UI is built with Preact and provides a dashboard for managing extension settings and viewing statistics.
+
+## Architecture
+
+The popup is a single-page Preact application:
+
+```typescript
+// packages/extension/src/Popup/index.tsx
+import { render } from 'preact'
+import { App } from './App'
+
+const rootElement = document.getElementById('root')
+
+if (!rootElement) {
+  throw new Error('Root element not found')
+}
+
+render(<App />, rootElement)
+```
+
+### Main app component
+
+```typescript
+// packages/extension/src/Popup/App.tsx:7
+export function App() {
+  return (
+    <div>
+      <div
+        style={{
+          padding: '16px',
+          background: 'var(--accent)',
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: '18px'
+        }}
+      >
+        xBlockOrigin
+      </div>
+
+      <Settings />
+      <BlacklistSection />
+      <WhitelistSection />
+      <MutedUsersSection />
+      <DebugPanel />
+    </div>
+  )
+}
+```
+
+The app is organized into five main sections:
+
+1. **Header** - Extension branding
+2. **Settings** - Toggle feature flags
+3. **Blacklist** - Manage blocked countries
+4. **Whitelist** - Manage exempted users
+5. **Muted Users** - View statistics and muted user list
+
+<Note>
+The popup uses CSS custom properties (`var(--accent)`, `var(--border)`, etc.) for theming. These are defined in the popup's HTML file.
+</Note>
+
+## State management
+
+The popup uses custom hooks to sync with Chrome storage:
+
+### Generic storage hook
+
+```typescript
+// packages/extension/src/Popup/hooks.ts:7
+export function useStorage<T>(key: string, defaultValue: T) {
+  const [value, setValue] = useState<T>(defaultValue)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // load initial value
+    chrome.storage.sync.get(key).then((result) => {
+      if (result[key] !== undefined) {
+        setValue(result[key])
+      }
+      setLoading(false)
+    })
+
+    // listen for changes
+    const listener = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string
+    ) => {
+      if (areaName === 'sync' && changes[key]) {
+        setValue(changes[key].newValue)
+      }
+    }
+
+    chrome.storage.onChanged.addListener(listener)
+    return () => chrome.storage.onChanged.removeListener(listener)
+  }, [key])
+
+  const updateValue = async (newValue: T) => {
+    await chrome.storage.sync.set({ [key]: newValue })
+    setValue(newValue)
+  }
+
+  return { value, setValue: updateValue, loading }
+}
+```
+
+This hook:
+
+- Loads initial value from `chrome.storage.sync`
+- Listens for storage changes and updates state automatically
+- Provides `setValue` function to update both storage and local state
+- Returns `loading` flag for initial load state
+
+### Specialized hooks
+
+<Tabs>
+  <Tab title="useBlacklist">
+    ```typescript
+    // packages/extension/src/Popup/hooks.ts:43
+    export function useBlacklist() {
+      const { value, setValue, loading } = useStorage<string[]>('blacklist', [])
+
+      const addCountry = async (country: string) => {
+        if (!value.includes(country)) {
+          const newList = [...value, country]
+          await setValue(newList)
+        }
+      }
+
+      const removeCountry = async (country: string) => {
+        const newList = value.filter((c) => c !== country)
+        await setValue(newList)
+      }
+
+      return {
+        blacklist: value,
+        addCountry,
+        removeCountry,
+        loading
+      }
+    }
+    ```
+
+    Manages the country blacklist array with add/remove helpers.
+  </Tab>
+  <Tab title="useMutedUsers">
+    ```typescript
+    // packages/extension/src/Popup/hooks.ts:67
+    export function useMutedUsers() {
+      const [users, setUsers] = useState<MutedUser[]>([])
+      const [loading, setLoading] = useState(true)
+
+      const loadUsers = async () => {
+        try {
+          const allUsers = await getAllMutedUsers()
+          setUsers(allUsers)
+        } catch (error) {
+          // ignore errors
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      useEffect(() => {
+        loadUsers()
+
+        // listen for storage changes and update incrementally
+        const listener = (
+          changes: { [key: string]: chrome.storage.StorageChange },
+          areaName: string
+        ) => {
+          if (areaName === 'local') {
+            setUsers((currentUsers) => {
+              let updated = [...currentUsers]
+
+              for (const [key, change] of Object.entries(changes)) {
+                if (!key.startsWith('muted:')) continue
+
+                if (change.newValue) {
+                  // user added or updated
+                  const user = change.newValue as MutedUser
+                  const index = updated.findIndex(
+                    (u) => u.userId === user.userId
+                  )
+                  if (index >= 0) {
+                    updated[index] = user
+                  } else {
+                    updated.push(user)
+                  }
+                } else if (change.oldValue) {
+                  // user removed
+                  const user = change.oldValue as MutedUser
+                  updated = updated.filter(
+                    (u) => u.userId !== user.userId
+                  )
+                }
+              }
+
+              return updated
+            })
+          }
+        }
+
+        chrome.storage.onChanged.addListener(listener)
+        return () => chrome.storage.onChanged.removeListener(listener)
+      }, [])
+
+      return { users, loading, reload: loadUsers }
+    }
+    ```
+
+    Loads muted users from `chrome.storage.local` and incrementally updates when users are added/removed.
+  </Tab>
+  <Tab title="useWhitelist">
+    ```typescript
+    // packages/extension/src/Popup/hooks.ts:130
+    export function useWhitelist() {
+      const [users, setUsers] = useState<WhitelistedUser[]>([])
+      const [loading, setLoading] = useState(true)
+
+      const loadUsers = async () => {
+        try {
+          const allUsers = await getAllWhitelistedUsers()
+          setUsers(allUsers)
+        } catch (error) {
+          // ignore errors
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      useEffect(() => {
+        loadUsers()
+
+        // listen for storage changes
+        const listener = (
+          changes: { [key: string]: chrome.storage.StorageChange },
+          areaName: string
+        ) => {
+          if (areaName === 'sync' && changes.whitelist) {
+            if (changes.whitelist.newValue) {
+              setUsers(changes.whitelist.newValue as WhitelistedUser[])
+            }
+          }
+        }
+
+        chrome.storage.onChanged.addListener(listener)
+        return () => chrome.storage.onChanged.removeListener(listener)
+      }, [])
+
+      return { users, loading, reload: loadUsers }
+    }
+    ```
+
+    Loads whitelist from `chrome.storage.sync` and updates when changed.
+  </Tab>
+</Tabs>
+
+<Tip>
+The muted users hook uses incremental updates to avoid re-fetching the entire list when a single user is muted. This improves performance when the list is large.
+</Tip>
+
+## Components
+
+### Settings
+
+Toggles for extension features:
+
+```typescript
+// packages/extension/src/Popup/Settings.tsx:5
+export function Settings() {
+  const [settings, setSettings] = useState<SettingsType>({
+    showFlags: false,
+    muteFollowing: false
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getSettings().then((result) => {
+      setSettings(result)
+      setLoading(false)
+    })
+
+    // listen for changes
+    const listener = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string
+    ) => {
+      if (areaName === 'sync' && changes.settings) {
+        if (changes.settings.newValue) {
+          setSettings(changes.settings.newValue)
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(listener)
+    return () => chrome.storage.onChanged.removeListener(listener)
+  }, [])
+
+  const handleToggleShowFlags = async () => {
+    const newSettings = { ...settings, showFlags: !settings.showFlags }
+    await updateSettings(newSettings)
+    setSettings(newSettings)
+  }
+
+  const handleToggleMuteFollowing = async () => {
+    const newSettings = {
+      ...settings,
+      muteFollowing: !settings.muteFollowing
+    }
+    await updateSettings(newSettings)
+    setSettings(newSettings)
+  }
+
+  if (loading) {
+    return null
+  }
+
+  return (
+    <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
+      <h2 style={{ margin: '0 0 12px 0', fontSize: '20px' }}>Settings</h2>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+          <input
+            type="checkbox"
+            checked={settings.showFlags}
+            onChange={handleToggleShowFlags}
+            style={{ cursor: 'pointer' }}
+          />
+          <span>Show country flags on posts</span>
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+          <input
+            type="checkbox"
+            checked={settings.muteFollowing}
+            onChange={handleToggleMuteFollowing}
+            style={{ cursor: 'pointer' }}
+          />
+          <span>Also mute users you are following</span>
+        </label>
+      </div>
+    </div>
+  )
+}
+```
+
+Settings available:
+
+- **Show country flags** - Inject flag emoji next to usernames on X.com
+- **Mute users you follow** - By default, followed users are skipped
+
+### Blacklist manager
+
+Manages the country blacklist:
+
+```typescript
+// packages/extension/src/Popup/BlacklistManager.tsx:9
+export function BlacklistManager({
+  blacklist,
+  onAdd,
+  onRemove
+}: BlacklistManagerProps) {
+  const [input, setInput] = useState('')
+
+  const handleAdd = () => {
+    const trimmed = input.trim()
+    if (trimmed) {
+      onAdd(trimmed)
+      setInput('')
+    }
+  }
+
+  const handleKeyPress = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAdd()
+    }
+  }
+
+  return (
+    <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
+      <h2 style={{ margin: '0 0 12px 0', fontSize: '20px' }}>
+        Country Blacklist
+      </h2>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.currentTarget.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Enter country name..."
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            border: '1px solid var(--border)',
+            fontSize: '14px',
+            background: 'var(--background)',
+            color: 'var(--text-primary)'
+          }}
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          style={{
+            padding: '8px 16px',
+            background: 'var(--accent)',
+            color: 'white',
+            border: 'none',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          Add
+        </button>
+      </div>
+
+      {blacklist.length === 0 ? (
+        <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+          No countries in blacklist
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {blacklist.map((country) => (
+            <div
+              key={country}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: 'var(--background-tertiary)',
+                fontSize: '14px'
+              }}
+            >
+              <span>{country}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(country)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '16px',
+                  lineHeight: 1
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+Features:
+
+- Text input with "Enter" key support
+- Tag-style display of blacklisted countries
+- Remove button (×) for each country
+
+### Whitelist manager
+
+Manages whitelisted users:
+
+```typescript
+// packages/extension/src/Popup/WhitelistManager.tsx:11
+export function WhitelistManager({
+  whitelist,
+  onUpdate
+}: WhitelistManagerProps) {
+  const [input, setInput] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleAdd = async () => {
+    const username = input.trim().replace(/^@/, '')
+    if (!username) {
+      return
+    }
+
+    setAdding(true)
+    setError('')
+
+    try {
+      const userData = await getUserData(username)
+
+      if (!userData) {
+        setError(`User @${username} not found`)
+        setAdding(false)
+        return
+      }
+
+      await addToWhitelist(userData.userId, username)
+      setInput('')
+      onUpdate()
+    } catch (err) {
+      setError('Failed to add user')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  // ... rest of component ...
+}
+```
+
+Unlike the blacklist manager, the whitelist manager:
+
+- **Validates usernames** - Calls X.com API to verify the user exists
+- **Shows loading state** - Disables input while fetching user data
+- **Displays errors** - Shows error message if user not found
+- **Strips @ prefix** - Accepts both `username` and `@username` formats
+
+### Statistics display
+
+Shows muted user statistics:
+
+```typescript
+// packages/extension/src/Popup/Stats.tsx:7
+export function Stats({ users }: StatsProps) {
+  const countsByCountry = users.reduce<Record<string, number>>(
+    (acc, user) => {
+      acc[user.country] = (acc[user.country] || 0) + 1
+      return acc
+    },
+    {}
+  )
+
+  const topCountries = Object.entries(countsByCountry)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+
+  return (
+    <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
+      <h2 style={{ margin: '0 0 12px 0', fontSize: '20px' }}>
+        Statistics
+      </h2>
+      <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Total Muted:</strong> {users.length} users
+        </div>
+        {topCountries.length > 0 && (
+          <div>
+            <strong>Top Countries:</strong>
+            <ul style={{ margin: '4px 0 0 0', paddingLeft: '20px' }}>
+              {topCountries.map(([country, count]) => (
+                <li key={country}>
+                  {country}: {count}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+Displays:
+
+- **Total muted users** - Count of all muted users
+- **Top 5 countries** - Countries with the most muted users, sorted by count
+
+### Muted users table
+
+Sortable table of muted users:
+
+```typescript
+// packages/extension/src/Popup/MutedUsersTable.tsx:11
+export function MutedUsersTable({ users }: MutedUsersTableProps) {
+  const [sortField, setSortField] = useState<SortField>('mutedAt')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const sortedUsers = [...users].sort((a, b) => {
+    let comparison = 0
+
+    switch (sortField) {
+      case 'username':
+        comparison = a.username.localeCompare(b.username)
+        break
+      case 'country':
+        comparison = a.country.localeCompare(b.country)
+        break
+      case 'mutedAt':
+        comparison = a.mutedAt - b.mutedAt
+        break
+    }
+
+    return sortDirection === 'asc' ? comparison : -comparison
+  })
+
+  // ... table rendering ...
+}
+```
+
+Features:
+
+- **Sortable columns** - Click headers to sort by username, country, or date
+- **Sort indicators** - Shows ↑/↓ arrow for current sort direction
+- **Scrollable** - Max height of 400px with vertical scroll
+- **Default sort** - Newest muted users first (`mutedAt desc`)
+
+## Component hierarchy
+
+```
+App
+├── Settings
+├── BlacklistSection
+│   └── BlacklistManager
+├── WhitelistSection
+│   └── WhitelistManager
+├── MutedUsersSection
+│   ├── Stats
+│   ├── MutedUsersTable
+│   └── ExportButton
+└── DebugPanel
+```
+
+Each section is self-contained and manages its own state using the custom hooks.
+
+<Note>
+The popup UI doesn't directly communicate with content scripts. All state changes go through Chrome storage, which content scripts listen to via `chrome.storage.onChanged`.
+</Note>

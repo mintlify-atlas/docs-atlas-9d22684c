@@ -1,0 +1,151 @@
+---
+title: Settings
+description: Configure extension behavior with settings for country flags and following user protection
+---
+
+xBlockOrigin provides two key settings to customize how the extension works. Both settings are accessible from the extension popup.
+
+## Available settings
+
+### Show country flags on posts
+
+**Default**: Disabled (unchecked)
+
+When enabled, this setting displays country flag emojis next to usernames on X.com posts, indicating each user's originating country.
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar.
+  </Step>
+  
+  <Step title="Navigate to Settings section">
+    Find the "Settings" section in the popup interface.
+  </Step>
+  
+  <Step title="Toggle the setting">
+    Check or uncheck the box next to **"Show country flags on posts"**.
+    
+    The setting is saved immediately.
+  </Step>
+</Steps>
+
+<Info>
+This is a visual-only feature that helps you identify users' countries at a glance. It doesn't affect muting behavior.
+</Info>
+
+### Also mute users you are following
+
+**Default**: Disabled (unchecked)
+
+By default, xBlockOrigin **does not mute** users you follow on X.com, even if they're from a blacklisted country. This setting lets you override that protection.
+
+**When disabled (default)**:
+- Users you follow are **never muted**, regardless of their country
+- The extension checks your following status before muting (cached for 5 minutes)
+- This protects accounts you've chosen to follow from being automatically muted
+
+**When enabled**:
+- Users you follow **are muted** if they're from a blacklisted country
+- Following status is ignored when making muting decisions
+- Only whitelisted users are protected from muting
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar.
+  </Step>
+  
+  <Step title="Navigate to Settings section">
+    Find the "Settings" section in the popup interface.
+  </Step>
+  
+  <Step title="Toggle the setting">
+    Check or uncheck the box next to **"Also mute users you are following"**.
+    
+    The setting is saved immediately and takes effect on new posts.
+  </Step>
+</Steps>
+
+<Warning>
+Changing this setting doesn't affect users who were already muted. It only applies to new users encountered after the change.
+</Warning>
+
+## How settings are stored
+
+Both settings are stored using `chrome.storage.sync`, which means:
+
+- They sync across all devices where you're signed into the same browser account
+- They persist even if you close your browser
+- Changes take effect immediately across all open tabs
+- They're stored locally and never sent to external servers
+
+## Settings in the source code
+
+The settings are defined in `packages/extension/src/Storage/settings.ts` with the following structure:
+
+```typescript
+type Settings = {
+  showFlags: boolean      // Show country flags on posts
+  muteFollowing: boolean  // Also mute users you are following
+}
+```
+
+Default values:
+```typescript
+const DEFAULT_SETTINGS: Settings = {
+  showFlags: false,
+  muteFollowing: false
+}
+```
+
+## Decision flow with settings
+
+Here's how xBlockOrigin processes a user with these settings:
+
+<Steps>
+  <Step title="Whitelist check">
+    Is the user whitelisted?
+    - **Yes** → Skip muting (done)
+    - **No** → Continue
+  </Step>
+  
+  <Step title="Following check (if muteFollowing is disabled)">
+    Do you follow this user?
+    - **Yes** → Skip muting (done)
+    - **No** → Continue
+    
+    *This step is skipped if "Also mute users you are following" is enabled.*
+  </Step>
+  
+  <Step title="Country check">
+    Is the user's country in your blacklist?
+    - **Yes** → Hide posts and mute user
+    - **No** → Skip muting (done)
+  </Step>
+</Steps>
+
+## Following status caching
+
+When "Also mute users you are following" is **disabled**, the extension needs to check your following status for each user. To optimize performance:
+
+- Following status is fetched from X.com's UserByScreenName API
+- Results are cached for **5 minutes**
+- The cache uses the userId as the key
+- This reduces API calls and improves browsing speed
+
+<Tip>
+If you recently followed or unfollowed someone, it may take up to 5 minutes for the extension to reflect the change due to caching.
+</Tip>
+
+## Best practices
+
+<Accordion title="Keep 'Also mute users you are following' disabled (default)">
+This prevents accidentally muting accounts you've chosen to follow. If you want to see someone's posts regardless of their country, you probably follow them for a reason.
+</Accordion>
+
+<Accordion title="Use 'Show country flags' sparingly">
+While helpful for identifying countries, enabling this setting may clutter your timeline. Enable it only if you actively want to see country information.
+</Accordion>
+
+<Accordion title="Combine with whitelist for granular control">
+Use the whitelist to protect specific accounts permanently, and let following protection handle the rest automatically.
+</Accordion>

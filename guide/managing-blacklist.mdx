@@ -1,0 +1,78 @@
+---
+title: Managing blacklist
+description: Learn how to add and remove countries from your blacklist to automatically mute users from specified locations
+---
+
+The country blacklist is the core feature of xBlockOrigin. When you add a country to your blacklist, the extension automatically mutes all users from that country and hides their posts with a blurred overlay.
+
+## How it works
+
+When you browse X.com, xBlockOrigin:
+
+1. Scans pages for user profiles (timeline, search, profiles, post detail pages, notifications)
+2. Queries X.com's AboutAccountQuery API to get each user's originating country
+3. Checks if the country is in your blacklist
+4. Immediately overlays posts from blacklisted users with a 50% opacity background and 8px blur
+5. Automatically mutes the user via X.com's API
+
+<Info>
+Country detection is based on X.com's geolocation data, which is updated every 30 days according to X.
+</Info>
+
+## Adding countries to your blacklist
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar to open the popup interface.
+  </Step>
+  
+  <Step title="Enter a country name">
+    In the "Country Blacklist" section, type the full country name in the input field (e.g., "United States", "Antarctica", "Brazil").
+  </Step>
+  
+  <Step title="Add the country">
+    Click the **Add** button or press **Enter** to add the country to your blacklist.
+    
+    The country will appear as a tag below the input field.
+  </Step>
+</Steps>
+
+<Tip>
+You can add multiple countries to your blacklist. There's no limit to how many countries you can blacklist.
+</Tip>
+
+## Removing countries from your blacklist
+
+To remove a country from your blacklist:
+
+1. Open the extension popup
+2. Find the country tag in the "Country Blacklist" section
+3. Click the **×** button next to the country name
+
+The country will be immediately removed from your blacklist.
+
+<Note>
+Removing a country from your blacklist does **not** automatically unmute users from that country. Users who were already muted will remain muted on X.com unless you manually unmute them.
+</Note>
+
+## Blacklist storage
+
+Your country blacklist is stored using `chrome.storage.sync`, which means:
+
+- It syncs across all your devices where you're signed into the same browser account
+- It persists even if you close your browser
+- It's stored locally and never sent to external servers
+
+## What happens after adding a country
+
+Once you add a country to your blacklist:
+
+- **Immediate effect**: The extension starts scanning for users from that country as you browse X.com
+- **Post hiding**: Posts from users in that country are hidden with a blurred overlay that adapts to your X.com theme (light, dim, or lights-out)
+- **Automatic muting**: Users are muted via X.com's API when first encountered
+- **Database tracking**: Muted users are saved to a local database with their username, country, and mute timestamp
+- **Toast notifications**: A notification appears when a user is muted
+
+<Info>
+The extension uses persistent caching (24-hour TTL for country data) to minimize API requests and improve performance.
+</Info>

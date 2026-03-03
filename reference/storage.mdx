@@ -1,0 +1,311 @@
+---
+title: Storage schema
+description: Chrome storage schema and data persistence layer for blacklist, whitelist, settings, muted users, and cache
+---
+
+xBlockOrigin uses Chrome's storage APIs for data persistence, with separation between synced and local storage.
+
+## Storage types
+
+The extension uses two Chrome storage areas:
+
+<Tabs>
+  <Tab title="chrome.storage.sync">
+    **Synced across devices** - Limited to 100KB total, 8KB per item
+
+    - Country blacklist
+    - User whitelist
+    - Extension settings
+  </Tab>
+  <Tab title="chrome.storage.local">
+    **Device-local storage** - Limited to 10MB total (Chrome) or unlimited (Firefox)
+
+    - Muted users database
+    - Persistent cache (countries, user IDs, following status)
+  </Tab>
+</Tabs>
+
+<Note>
+All storage operations use Valibot schemas for runtime validation to ensure type safety and data integrity.
+</Note>
+
+## Synced storage (chrome.storage.sync)
+
+### Country blacklist
+
+**Storage key:** `blacklist`
+
+**Schema:**
+```typescript
+const blacklistSchema = v.array(v.string())
+
+type Blacklist = string[] // e.g., ["United States", "Russia", "China"]
+```
+
+**Example data:**
+```json
+{
+  "blacklist": ["United States", "Antarctica", "Russia"]
+}
+```
+
+**Access pattern:**
+- Read on every user processing to check if country is blacklisted
+- Write when user adds/removes countries via popup UI
+
+---
+
+### User whitelist
+
+**Storage key:** `whitelist`
+
+**Schema:**
+```typescript
+const whitelistedUserSchema = v.object({
+  username: v.string(),
+  userId: v.string(),
+  whitelistedAt: v.number() // Unix timestamp in milliseconds
+})
+
+type WhitelistedUser = {
+  username: string
+  userId: string
+  whitelistedAt: number
+}
+```
+
+**Example data:**
+```json
+{
+  "whitelist": [
+    {
+      "username": "elonmusk",
+      "userId": "44196397",
+      "whitelistedAt": 1709481600000
+    },
+    {
+      "username": "TwitterDev",
+      "userId": "2244994945",
+      "whitelistedAt": 1709568000000
+    }
+  ]
+}
+```
+
+**Access pattern:**
+- Read on every user processing to check if user is whitelisted
+- Write when user adds/removes users from whitelist
+
+**Functions:**
+<ParamField path="getAllWhitelistedUsers" type="() => Promise<WhitelistedUser[]>">
+  Returns all whitelisted users
+</ParamField>
+
+<ParamField path="isWhitelisted" type="(userId: string) => Promise<boolean>">
+  Checks if a user ID is whitelisted
+</ParamField>
+
+<ParamField path="addToWhitelist" type="(userId: string, username: string) => Promise<void>">
+  Adds a user to whitelist (prevents duplicates)
+</ParamField>
+
+<ParamField path="removeFromWhitelist" type="(userId: string) => Promise<void>">
+  Removes a user from whitelist
+</ParamField>
+
+---
+
+### Settings
+
+**Storage key:** `settings`
+
+**Schema:**
+```typescript
+const settingsSchema = v.object({
+  showFlags: v.boolean(),
+  muteFollowing: v.boolean()
+})
+
+type Settings = {
+  showFlags: boolean      // Show country flags next to usernames
+  muteFollowing: boolean  // Also mute users you are following
+}
+```
+
+**Default values:**
+```json
+{
+  "settings": {
+    "showFlags": false,
+    "muteFollowing": false
+  }
+}
+```
+
+**Access pattern:**
+- Read when processing users (to check `muteFollowing`)
+- Read when injecting flags (to check `showFlags`)
+- Write when user changes settings in popup
+
+**Functions:**
+<ParamField path="getSettings" type="() => Promise<Settings>">
+  Returns current settings (merges with defaults)
+</ParamField>
+
+<ParamField path="updateSettings" type="(updates: Partial<Settings>) => Promise<void>">
+  Updates settings (partial update supported)
+</ParamField>
+
+<ParamField path="getShowFlags" type="() => Promise<boolean>">
+  Returns `showFlags` setting value
+</ParamField>
+
+<ParamField path="getMuteFollowing" type="() => Promise<boolean>">
+  Returns `muteFollowing` setting value
+</ParamField>
+
+---
+
+## Local storage (chrome.storage.local)
+
+### Muted users database
+
+**Storage key pattern:** `muted:{userId}`
+
+**Schema:**
+```typescript
+const mutedUserSchema = v.object({
+  username: v.string(),
+  userId: v.string(),
+  country: v.string(),
+  mutedAt: v.number() // Unix timestamp in milliseconds
+})
+
+type MutedUser = {
+  username: string
+  userId: string
+  country: string
+  mutedAt: number
+}
+```
+
+**Example data:**
+```json
+{
+  "muted:1234567890": {
+    "username": "badactor",
+    "userId": "1234567890",
+    "country": "Antarctica",
+    "mutedAt": 1709481600000
+  },
+  "muted:9876543210": {
+    "username": "spammer",
+    "userId": "9876543210",
+    "country": "United States",
+    "mutedAt": 1709568000000
+  }
+}
+```
+
+**Access pattern:**
+- Write when a new user is muted via API
+- Read to display muted users in popup UI
+- Read to check if user is already muted (cache miss scenario)
+
+**Functions:**
+<ParamField path="saveMutedUser" type="(user: MutedUser) => Promise<void>">
+  Saves a muted user to database (validates with schema)
+</ParamField>
+
+<ParamField path="getAllMutedUsers" type="() => Promise<MutedUser[]>">
+  Returns all muted users (filters keys with `muted:` prefix)
+</ParamField>
+
+<ParamField path="isUserMuted" type="(userId: string) => Promise<boolean>">
+  Checks if a user ID exists in muted database
+</ParamField>
+
+<ParamField path="getMutedUsersByCountry" type="(country: string) => Promise<MutedUser[]>">
+  Returns all muted users from a specific country
+</ParamField>
+
+---
+
+### Persistent cache
+
+The cache system stores time-limited data with automatic expiration. See [Caching](/reference/caching) for details.
+
+**Storage key patterns:**
+- `cache:country:{username}` - Country lookup cache (24h TTL)
+- `cache:user:{username}` - User ID lookup cache (24h TTL)
+- `cache:following:{userId}` - Following status cache (5m TTL)
+
+**Schema:**
+```typescript
+type CacheEntry<T> = {
+  value: T
+  expiresAt: number // Unix timestamp in milliseconds
+}
+```
+
+**Example data:**
+```json
+{
+  "cache:country:elonmusk": {
+    "value": "United States",
+    "expiresAt": 1709568000000
+  },
+  "cache:user:elonmusk": {
+    "value": "44196397",
+    "expiresAt": 1709568000000
+  },
+  "cache:following:44196397": {
+    "value": true,
+    "expiresAt": 1709482200000
+  }
+}
+```
+
+**Access pattern:**
+- Read before every API call to check if data is cached
+- Write after successful API responses
+- Lazy cleanup on read (expired entries deleted when accessed)
+
+---
+
+## Storage limits
+
+<Warning>
+Be aware of Chrome storage quota limits:
+</Warning>
+
+| Storage Type | Total Quota | Per-Item Quota |
+|--------------|-------------|----------------|
+| `chrome.storage.sync` | 100 KB | 8 KB |
+| `chrome.storage.local` (Chrome) | 10 MB | N/A |
+| `chrome.storage.local` (Firefox) | Unlimited | N/A |
+
+**Estimated storage usage:**
+- Blacklist: ~100 bytes per country
+- Whitelist: ~100 bytes per user
+- Settings: ~50 bytes
+- Muted user: ~150 bytes per user
+- Cache entry: ~100-200 bytes per entry
+
+<Note>
+With 10MB local storage quota, you can store approximately 50,000-70,000 muted users before hitting the limit.
+</Note>
+
+## Data migration
+
+The extension does not currently implement data migration between versions. All schemas are validated on read using Valibot:
+
+```typescript
+import * as v from 'valibot'
+
+// Example: Reading validated data
+const result = await chrome.storage.sync.get('settings')
+const settings = v.parse(settingsSchema, result.settings)
+```
+
+If schema validation fails, the extension falls back to default values where applicable.

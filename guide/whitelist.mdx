@@ -1,0 +1,119 @@
+---
+title: Whitelist
+description: Protect specific users from being muted by adding them to your whitelist, regardless of their country
+---
+
+The whitelist feature allows you to protect specific users from being muted, even if they're from a blacklisted country. This is useful for accounts you want to see regardless of their location.
+
+## How the whitelist works
+
+When processing a user, xBlockOrigin checks the whitelist **before** checking the country blacklist:
+
+1. User is detected on X.com
+2. Extension checks if user is whitelisted → **If yes, skip all muting**
+3. Extension checks if you follow them (if "Also mute users you are following" is disabled)
+4. Extension checks their country against your blacklist
+5. If country is blacklisted and user isn't whitelisted, their posts are hidden and they're muted
+
+<Info>
+Whitelisted users are **never muted**, regardless of their country or any other settings.
+</Info>
+
+## Adding users to your whitelist
+
+<Steps>
+  <Step title="Open the extension popup">
+    Click the xBlockOrigin icon in your browser toolbar.
+  </Step>
+  
+  <Step title="Navigate to Whitelisted Users section">
+    Find the "Whitelisted Users" section in the popup interface.
+  </Step>
+  
+  <Step title="Enter a username">
+    Type the username in the input field. You can include or omit the `@` symbol:
+    - `elonmusk` ✓
+    - `@elonmusk` ✓
+    
+    Both formats work.
+  </Step>
+  
+  <Step title="Add the user">
+    Click the **Add** button or press **Enter**.
+    
+    The extension will:
+    - Fetch the user's data from X.com's UserByScreenName API
+    - Verify the user exists
+    - Add them to your whitelist with their userId and username
+    - Display the username as a tag below the input field
+  </Step>
+</Steps>
+
+<Note>
+The button will show "Adding..." while fetching user data. If the user doesn't exist, you'll see an error message: "User @username not found".
+</Note>
+
+## Removing users from your whitelist
+
+To remove a user from your whitelist:
+
+1. Open the extension popup
+2. Find the user tag in the "Whitelisted Users" section
+3. Click the **×** button next to the username
+
+The user will be immediately removed from your whitelist.
+
+<Warning>
+Removing a user from the whitelist doesn't automatically re-hide their posts or mute them. If they're from a blacklisted country, their posts will only be hidden when you encounter new posts from them after the removal.
+</Warning>
+
+## Whitelisting from hidden posts
+
+You can also whitelist users directly from their hidden posts on X.com. See [Hidden posts](/guide/hidden-posts) for more details.
+
+There are two ways to whitelist from a hidden post:
+
+### From the overlay
+
+Click **"Unmute and whitelist"** on the hidden post overlay to:
+- Unmute the user via X.com's API
+- Add them to your whitelist
+- Unhide all their posts on the current page
+
+### From the unhidden notice
+
+If you clicked **"Unhide"** first:
+1. A notice appears below the post: "Post unhidden, but user is still muted."
+2. Click **"Unmute and whitelist"** in the notice to perform the same actions as above
+
+## Whitelist storage
+
+Your whitelist is stored using `chrome.storage.local`, which includes:
+
+- **userId**: X.com's internal user ID (for precise matching)
+- **username**: The user's @handle (for display)
+- **whitelistedAt**: Timestamp when the user was added
+
+The data is stored locally on your device and never sent to external servers.
+
+## Whitelist vs following protection
+
+xBlockOrigin has two ways to protect users from being muted:
+
+<Accordion title="Whitelist (manual, permanent)">
+- You manually add specific users
+- Works regardless of whether you follow them
+- Persists even if you unfollow the user
+- Stored permanently until you remove them
+</Accordion>
+
+<Accordion title="Following protection (automatic, conditional)">
+- Automatically protects all users you follow
+- Only active when "Also mute users you are following" is **disabled** (default)
+- Protection ends if you unfollow the user
+- Based on your current following status (cached for 5 minutes)
+</Accordion>
+
+<Tip>
+Use the whitelist for users you want to protect permanently, regardless of your following status. Use following protection to automatically protect everyone you follow.
+</Tip>

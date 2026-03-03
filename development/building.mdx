@@ -1,0 +1,212 @@
+---
+title: Building the extension
+description: Build xBlockOrigin for Chrome and Firefox
+---
+
+xBlockOrigin supports both Chrome (Manifest V3) and Firefox (Manifest V2). This guide covers how to build the extension for each browser.
+
+## Build commands
+
+The project provides several build scripts for different scenarios:
+
+<CodeGroup>
+```bash Build both browsers
+bun run build
+```
+
+```bash Build Chrome only
+bun run build:chrome
+```
+
+```bash Build Firefox only
+bun run build:firefox
+```
+
+```bash Clean build artifacts
+bun run clean
+```
+</CodeGroup>
+
+## Build process
+
+The build process consists of two main steps for each browser:
+
+<Steps>
+  <Step title="Bundle JavaScript">
+    Bun compiles TypeScript source files into browser-compatible JavaScript:
+
+    - `src/Content/index.ts` → `content.js` (Content script)
+    - `src/Background/index.ts` → `background.js` (Background service worker)
+    - `src/Popup/index.tsx` → `popup.js` (Popup UI)
+
+    All files are bundled with the `--target browser` flag for browser compatibility.
+  </Step>
+
+  <Step title="Copy static assets">
+    Static files are copied to the dist directory:
+
+    - Browser-specific manifest (`manifest.v2.json` or `manifest.v3.json`)
+    - Popup HTML (`popup.html`)
+    - Theme CSS (`themes.css`)
+    - Theme loader script (`theme-loader.js`)
+  </Step>
+</Steps>
+
+## Build output
+
+After building, you'll find the compiled extensions in the `dist/` directory:
+
+```
+dist/
+├── chrome/              # Chrome/Edge build (Manifest V3)
+│   ├── manifest.json
+│   ├── content.js
+│   ├── background.js
+│   ├── popup.js
+│   ├── popup.html
+│   ├── themes.css
+│   └── theme-loader.js
+└── firefox/             # Firefox build (Manifest V2)
+    ├── manifest.json
+    ├── content.js
+    ├── background.js
+    ├── popup.js
+    ├── popup.html
+    ├── themes.css
+    └── theme-loader.js
+```
+
+<Note>
+  The only difference between Chrome and Firefox builds is the manifest file. Chrome uses Manifest V3 with a service worker, while Firefox uses Manifest V2 with a persistent background page.
+</Note>
+
+## Browser-specific builds
+
+### Chrome/Edge (Manifest V3)
+
+The Chrome build uses Manifest V3, which includes:
+
+- Service worker instead of persistent background page
+- Updated permissions model
+- Better performance and security
+
+Build command:
+
+```bash
+bun run build:chrome
+```
+
+This executes:
+1. `build:chrome:js` - Bundles TypeScript files
+2. `build:chrome:assets` - Copies manifest.v3.json and static assets
+
+### Firefox (Manifest V2)
+
+The Firefox build uses Manifest V2, which includes:
+
+- Persistent background page (required for Firefox compatibility)
+- Traditional permissions model
+
+Build command:
+
+```bash
+bun run build:firefox
+```
+
+This executes:
+1. `build:firefox:js` - Bundles TypeScript files
+2. `build:firefox:assets` - Copies manifest.v2.json and static assets
+
+## Development workflow
+
+For active development, follow this workflow:
+
+<Steps>
+  <Step title="Make your changes">
+    Edit source files in `packages/extension/src/`.
+  </Step>
+
+  <Step title="Run quality checks">
+    Ensure your code passes all checks:
+
+    ```bash
+    bun run typecheck
+    bun run lint
+    bun run format
+    ```
+
+    Or run all checks at once:
+
+    ```bash
+    bun run check
+    ```
+  </Step>
+
+  <Step title="Build the extension">
+    Build for your target browser:
+
+    ```bash
+    bun run build:chrome
+    # or
+    bun run build:firefox
+    ```
+  </Step>
+
+  <Step title="Test in browser">
+    Load the extension in your browser:
+
+    **Chrome/Edge:**
+    1. Go to `chrome://extensions/`
+    2. Click "Reload" on the xBlockOrigin extension
+
+    **Firefox:**
+    1. Go to `about:debugging#/runtime/this-firefox`
+    2. Click "Reload" on the extension
+    
+    <Tip>
+      You don't need to remove and re-add the extension. Just click reload after rebuilding.
+    </Tip>
+  </Step>
+</Steps>
+
+<Warning>
+  Always rebuild after making changes. The browser loads files from the `dist/` directory, not your source files.
+</Warning>
+
+## Production builds
+
+For production releases, the CI/CD pipeline automatically:
+
+1. Runs type checking and linting
+2. Builds both browser versions
+3. Injects version numbers into manifests
+4. Creates ZIP files for distribution
+5. Creates GitLab releases with version tags
+
+The release process is automated via GitLab CI/CD with automatic version bumping through pre-commit hooks.
+
+## Troubleshooting
+
+### Build fails with type errors
+
+Run type checking to see detailed errors:
+
+```bash
+bun run typecheck
+```
+
+Fix any type errors before building.
+
+### Extension doesn't load in browser
+
+Check that:
+1. The build completed without errors
+2. The `dist/chrome/` or `dist/firefox/` directory exists and contains all files
+3. The manifest.json file is valid JSON
+
+### Changes not appearing
+
+Make sure you:
+1. Rebuilt the extension after making changes
+2. Reloaded the extension in the browser
+3. Refreshed the X.com page you're testing on

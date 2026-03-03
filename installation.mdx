@@ -1,0 +1,235 @@
+---
+title: Installation
+description: Install xBlockOrigin on Chrome, Edge, or Firefox
+---
+
+xBlockOrigin is available as an unsigned extension for Chrome, Edge, and Firefox. Follow the instructions below for your browser.
+
+<Note>
+All extensions are unsigned and built for personal/testing use. Download pre-built extensions from the [GitLab Releases page](https://gitlab.com/yourproject/xblockorigin/-/releases).
+</Note>
+
+## Choose your browser
+
+<Tabs>
+  <Tab title="Chrome/Edge">
+    ## Chrome and Edge installation
+
+    Chrome and Edge require extensions to be loaded in developer mode when unsigned.
+
+    <Steps>
+      <Step title="Download the extension">
+        Download `xblockorigin-chrome-rX.zip` from the [latest release](https://gitlab.com/yourproject/xblockorigin/-/releases)
+      </Step>
+      <Step title="Extract to permanent location">
+        Unzip the file to a permanent folder on your computer
+        
+        <Warning>
+        Don't delete this folder! The extension loads from this location, so moving or deleting it will break the extension.
+        </Warning>
+      </Step>
+      <Step title="Open extensions page">
+        Navigate to `chrome://extensions/` in Chrome or `edge://extensions/` in Edge
+      </Step>
+      <Step title="Enable developer mode">
+        Toggle **"Developer mode"** using the switch in the top-right corner
+      </Step>
+      <Step title="Load the extension">
+        Click **"Load unpacked"** button that appears after enabling developer mode
+      </Step>
+      <Step title="Select the folder">
+        Browse to and select the unzipped folder from Step 2
+      </Step>
+      <Step title="Verify installation">
+        The xBlockOrigin extension should now appear in your extensions list with the status "Unpacked"
+      </Step>
+    </Steps>
+
+    ### Important notes for Chrome/Edge
+
+    <Note>
+    - Extension will show as "unpackaged" or "unpacked" - this is normal for unsigned extensions
+    - Chrome may display a warning on every startup that developer mode extensions are installed
+    - The extension will stay installed as long as you:
+      - Keep the extension folder in its location
+      - Don't disable developer mode
+      - Don't manually remove the extension
+    </Note>
+
+    ### Manifest V3 features
+
+    The Chrome/Edge version uses Manifest V3 with:
+    - Modern service worker architecture
+    - Enhanced security and privacy
+    - Optimized performance
+    - `storage`, `tabs`, and `activeTab` permissions
+    - Host permissions for `x.com` and `twitter.com`
+  </Tab>
+
+  <Tab title="Firefox Standard">
+    ## Firefox Standard Edition (temporary installation)
+
+    Firefox requires extensions to be signed. For unsigned extensions in standard Firefox, you can only load them temporarily.
+
+    <Warning>
+    The extension will be removed when Firefox restarts. You must reload it after every browser restart. For permanent installation, use Firefox Developer Edition, Nightly, or ESR.
+    </Warning>
+
+    <Steps>
+      <Step title="Download the extension">
+        Download `xblockorigin-firefox-rX.zip` from the [latest release](https://gitlab.com/yourproject/xblockorigin/-/releases)
+      </Step>
+      <Step title="Extract the archive">
+        Unzip the file to any location (this can be temporary since the extension is loaded temporarily)
+      </Step>
+      <Step title="Open debugging page">
+        Navigate to `about:debugging#/runtime/this-firefox` in Firefox
+      </Step>
+      <Step title="Load temporary add-on">
+        Click **"Load Temporary Add-on..."** button
+      </Step>
+      <Step title="Select the manifest">
+        Browse to the extracted folder and select the `manifest.json` file
+        
+        <Note>
+        Alternatively, you can select the `.zip` file directly without extracting it
+        </Note>
+      </Step>
+      <Step title="Verify installation">
+        The extension should now appear in the Temporary Extensions list
+      </Step>
+    </Steps>
+
+    ### Important notes for Firefox Standard
+
+    <Warning>
+    - Extension is **temporary** and will be removed when Firefox restarts
+    - You must reload the extension after every Firefox restart
+    - This is the only option for unsigned extensions in standard Firefox release builds
+    - For a better experience, consider using Firefox Developer Edition
+    </Warning>
+
+    ### Reloading after restart
+
+    After each Firefox restart:
+    1. Navigate to `about:debugging#/runtime/this-firefox`
+    2. Click "Load Temporary Add-on..."
+    3. Select the `manifest.json` file again
+  </Tab>
+
+  <Tab title="Firefox Developer/Nightly/ESR">
+    ## Firefox Developer Edition, Nightly, or ESR (permanent installation)
+
+    Firefox Developer Edition, Nightly, and ESR allow you to disable signature verification for permanent installation of unsigned extensions.
+
+    <Steps>
+      <Step title="Download the extension">
+        Download `xblockorigin-firefox-rX.zip` from the [latest release](https://gitlab.com/yourproject/xblockorigin/-/releases)
+      </Step>
+      <Step title="Open Firefox config">
+        Navigate to `about:config` in Firefox
+        
+        <Note>
+        Click "Accept the Risk and Continue" if prompted
+        </Note>
+      </Step>
+      <Step title="Disable signature requirement">
+        Search for `xpinstall.signatures.required`
+        
+        Set it to **`false`** by double-clicking the preference
+        
+        <Warning>
+        This disables signature checks for all extensions system-wide, not just xBlockOrigin
+        </Warning>
+      </Step>
+      <Step title="Open add-ons page">
+        Navigate to `about:addons`
+      </Step>
+      <Step title="Install from file">
+        Click the gear icon (⚙️) in the top-right corner
+        
+        Select **"Install Add-on From File"** from the dropdown menu
+      </Step>
+      <Step title="Select the ZIP file">
+        Browse to and select the downloaded `xblockorigin-firefox-rX.zip` file
+        
+        <Note>
+        Do not extract the ZIP - install it directly
+        </Note>
+      </Step>
+      <Step title="Confirm installation">
+        Click **"Add"** when Firefox prompts you to confirm the installation
+      </Step>
+      <Step title="Verify installation">
+        The extension should now appear in your extensions list and remain installed permanently
+      </Step>
+    </Steps>
+
+    ### Important notes for Firefox Developer/Nightly/ESR
+
+    <Note>
+    - Works in Developer Edition, Nightly, and ESR versions only
+    - Extension stays installed permanently (survives browser restarts)
+    - Disabling signature checks affects all extensions system-wide
+    - **Not available** in standard Firefox release builds
+    </Note>
+
+    ### Which Firefox version should I use?
+
+    - **Developer Edition**: Best for developers, includes dev tools, updated every 6 weeks
+    - **Nightly**: Cutting-edge features, updated daily, may be unstable
+    - **ESR (Extended Support Release)**: Stable, enterprise-focused, updated every 42 weeks
+  </Tab>
+</Tabs>
+
+## Manifest V2 vs V3
+
+xBlockOrigin uses different manifest versions depending on your browser:
+
+| Browser | Manifest Version | Architecture |
+|---------|-----------------|-------------|
+| Chrome/Edge | V3 | Service worker |
+| Firefox | V2 | Persistent background page |
+
+<Note>
+Both versions provide identical functionality - the differences are purely technical to support each browser's requirements.
+</Note>
+
+## Permissions explained
+
+xBlockOrigin requests the following permissions:
+
+- **storage**: Store your blacklist, whitelist, settings, and muted users database locally
+- **tabs**: Access the current tab to inject content scripts
+- **activeTab**: Interact with X.com pages you're actively viewing
+- **x.com and twitter.com**: Access X.com/Twitter.com to scan posts and call APIs
+- **webRequest** (Firefox only): Monitor web requests for optimal functionality
+
+<Warning>
+All data is stored locally on your device. xBlockOrigin never sends data to external servers and only communicates with X.com's official API.
+</Warning>
+
+## Troubleshooting
+
+### Chrome/Edge: Extension disappeared after restart
+
+- Verify developer mode is still enabled in `chrome://extensions/`
+- Check that the extension folder wasn't moved or deleted
+- Reload the extension using "Load unpacked"
+
+### Firefox Standard: Extension missing after restart
+
+This is expected behavior. Temporary extensions are removed on restart. Either:
+- Reload the extension from `about:debugging`
+- Switch to Firefox Developer Edition for permanent installation
+
+### Extension not working on X.com
+
+- Ensure you're logged into X.com
+- Refresh the X.com page after installing the extension
+- Check browser console for errors (F12 → Console)
+- Verify the extension is enabled in your browser's extensions page
+
+## Next steps
+
+Now that you've installed xBlockOrigin, learn how to configure it and mute your first country in our [quick start guide](/quickstart).

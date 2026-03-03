@@ -1,0 +1,145 @@
+---
+title: Development setup
+description: Set up your development environment for xBlockOrigin
+---
+
+This guide will help you set up your local development environment for contributing to xBlockOrigin.
+
+## Prerequisites
+
+xBlockOrigin uses Bun as its JavaScript runtime and package manager. You'll need to install it before getting started.
+
+<Steps>
+  <Step title="Install Bun">
+    Bun is a fast all-in-one JavaScript runtime. Install it using the official installer:
+
+    ```bash
+    curl -fsSL https://bun.sh/install | bash
+    ```
+
+    Or on Windows:
+
+    ```powershell
+    powershell -c "irm bun.sh/install.ps1 | iex"
+    ```
+
+    <Tip>
+      Verify your installation by running `bun --version`. You need Bun v1.0 or higher.
+    </Tip>
+  </Step>
+
+  <Step title="Clone the repository">
+    Clone the xBlockOrigin repository to your local machine:
+
+    ```bash
+    git clone <repository-url>
+    cd xblockorigin
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all project dependencies using Bun:
+
+    ```bash
+    bun install
+    ```
+
+    This will install:
+    - **Runtime dependencies**: Preact, Valibot
+    - **Development tools**: TypeScript, Biome, type definitions
+
+    <Note>
+      The `postinstall` script automatically sets up Git hooks for version bumping.
+    </Note>
+  </Step>
+
+  <Step title="Verify your setup">
+    Run the type checker and linter to ensure everything is working:
+
+    ```bash
+    bun run typecheck
+    bun run lint
+    ```
+
+    If both commands complete without errors, your development environment is ready!
+  </Step>
+</Steps>
+
+## Development tools
+
+The project includes several tools to maintain code quality:
+
+### TypeScript
+
+Type checking is performed using the TypeScript compiler in no-emit mode:
+
+```bash
+bun run typecheck
+```
+
+This validates types without generating JavaScript output (Bun handles bundling).
+
+### Biome
+
+Biome handles both linting and formatting with a single, fast tool:
+
+<CodeGroup>
+```bash Lint and auto-fix
+bun run lint
+```
+
+```bash Format code
+bun run format
+```
+
+```bash Run all checks
+bun run check
+```
+</CodeGroup>
+
+<Tip>
+  Run `bun run check` before committing to catch all issues at once. This runs type checking, linting, and formatting in sequence.
+</Tip>
+
+### Git hooks
+
+The project uses a pre-commit hook that automatically increments the major version number. This is set up during `bun install` via the `postinstall` script:
+
+```bash
+bun run setup-hooks
+```
+
+<Warning>
+  If you skip the pre-commit hook (not recommended), CI builds will fail due to version mismatch.
+</Warning>
+
+## Browser extension development
+
+To test the extension during development, you'll need to load it as an unpacked/temporary extension:
+
+### Chrome/Edge
+
+1. Build the Chrome version (see [Building](/development/building))
+2. Navigate to `chrome://extensions/`
+3. Enable "Developer mode" (toggle in top-right)
+4. Click "Load unpacked"
+5. Select the `dist/chrome/` directory
+
+### Firefox
+
+1. Build the Firefox version (see [Building](/development/building))
+2. Navigate to `about:debugging#/runtime/this-firefox`
+3. Click "Load Temporary Add-on"
+4. Select any file in the `dist/firefox/` directory (or select `manifest.json`)
+
+<Note>
+  In Firefox, temporary extensions are removed when the browser closes. You'll need to reload them after each restart.
+</Note>
+
+## Next steps
+
+Now that your environment is set up, you can:
+
+- Learn how to [build the extension](/development/building) for Chrome and Firefox
+- Explore the [project structure](/development/project-structure) to understand the codebase
+- Read the [contributing guidelines](/development/contributing) before making changes

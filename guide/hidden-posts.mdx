@@ -1,0 +1,190 @@
+---
+title: Hidden posts
+description: Learn how to interact with hidden posts, unhide them temporarily, or unmute and whitelist users directly from the overlay
+---
+
+When xBlockOrigin detects a user from a blacklisted country, their posts are immediately hidden with an overlay. This page explains how to interact with these hidden posts.
+
+## What hidden posts look like
+
+Hidden posts are covered with an overlay that:
+
+- Has **50% opacity** matching your X.com theme (light, dim, or lights-out)
+- Applies an **8px blur effect** using CSS backdrop-filter
+- Displays the message: `"Post by @username from Country hidden by xBlockOrigin"`
+- Provides two action buttons: **Unhide** and **Unmute and whitelist**
+- Keeps the original post intact underneath (all click handlers preserved)
+
+<Info>
+The overlay adapts to your X.com theme automatically. It uses `getComputedStyle()` to match the background color of your current theme.
+</Info>
+
+## Unhiding a post
+
+To temporarily reveal a hidden post without unmuting the user:
+
+<Steps>
+  <Step title="Find a hidden post">
+    Look for the blurred overlay with the xBlockOrigin message.
+  </Step>
+  
+  <Step title="Click Unhide">
+    Click the **Unhide** button on the overlay.
+    
+    The overlay is removed and the post becomes fully visible.
+  </Step>
+  
+  <Step title="Notice appears">
+    A notice appears below the unhidden post:
+    
+    `"Post unhidden, but user is still muted."`
+    
+    This notice includes two options:
+    - **Unmute and whitelist** button
+    - **×** button to dismiss the notice
+  </Step>
+</Steps>
+
+<Note>
+Unhiding a post only removes the overlay for that specific post. The user remains muted on X.com, and their other posts will still be hidden.
+</Note>
+
+## Unmuting and whitelisting from the overlay
+
+To immediately unmute a user and add them to your whitelist:
+
+<Steps>
+  <Step title="Click 'Unmute and whitelist' on the overlay">
+    On any hidden post, click the **Unmute and whitelist** button.
+  </Step>
+  
+  <Step title="Extension performs multiple actions">
+    The extension automatically:
+    - Unmutes the user via X.com's API (`/i/api/1.1/mutes/users/destroy.json`)
+    - Adds the user to your whitelist (stored in `chrome.storage.local`)
+    - Unhides **all posts** by this user on the current page
+    - Sends a notification to other extension components
+  </Step>
+  
+  <Step title="User is now whitelisted">
+    The user will **never be muted again**, even if they're from a blacklisted country.
+    
+    Their posts will appear normally on all future page loads.
+  </Step>
+</Steps>
+
+<Tip>
+This is the fastest way to whitelist a user. It handles both unmuting on X.com and adding to your whitelist in one click.
+</Tip>
+
+## Unmuting from the unhidden notice
+
+If you already clicked **Unhide**, you can still unmute and whitelist from the notice:
+
+<Steps>
+  <Step title="Find the unhidden notice">
+    Look for the notice below the unhidden post that says:
+    
+    `"Post unhidden, but user is still muted."`
+  </Step>
+  
+  <Step title="Click 'Unmute and whitelist'">
+    Click the **Unmute and whitelist** button in the notice.
+    
+    This performs the same actions as clicking the button on the overlay:
+    - Unmutes via X.com API
+    - Adds to whitelist
+    - Unhides all posts by this user
+    - Removes the notice
+  </Step>
+</Steps>
+
+### Dismissing the notice
+
+If you want to keep the post unhidden but don't want to whitelist the user:
+
+1. Click the **×** button on the right side of the notice
+2. The notice disappears, but the post remains visible
+3. The user stays muted on X.com
+4. Their other posts remain hidden
+
+## Technical details
+
+### How overlays are created
+
+Overlays are created by the `createHiddenPostNotice()` function in `packages/extension/src/Content/hiddenPostNotice.ts`:
+
+- The overlay is a `<div>` element with `position: absolute`
+- It covers the entire tweet element using `top: 0; left: 0; right: 0; bottom: 0`
+- The tweet element's position is set to `relative` if it's `static`
+- Theme colors are detected using `detectXTheme()` from `Utils/themeDetector`
+- Background color is extracted from `document.body` styles
+
+### Post tracking
+
+The extension tracks hidden posts using:
+
+```typescript
+// Map from notice elements to tweet elements
+const noticeToTweet = new WeakMap<Element, Element>()
+
+// Map to track hidden posts by userId
+const hiddenByUserId = new Map<string, Set<Element>>()
+```
+
+This allows:
+- Finding all posts by a specific user
+- Unhiding all posts when a user is whitelisted
+- Efficient cleanup when posts are removed
+
+### Unhiding all posts by a user
+
+When you click "Unmute and whitelist", the extension:
+
+1. Calls `unhideAllPostsByUserId(userId)` from `postHider.ts`
+2. Finds all overlay elements for that userId
+3. Removes each overlay from the DOM
+4. Cleans up tracking data structures
+
+<Info>
+The function uses `document.contains()` to check if elements are still in the DOM before removing them, preventing errors if posts were already removed by X.com.
+</Info>
+
+## Where hidden posts appear
+
+The extension hides posts on all major X.com pages:
+
+- **Timeline** (home feed)
+- **Search results**
+- **User profiles**
+- **Post detail pages** (including replies)
+- **Notifications**
+
+Each page type has a dedicated scanner in the `Content/` directory:
+- `timelineScanner.ts` - Timeline posts
+- `searchScanner.ts` - Search results
+- `profileScanner.ts` - Profile pages
+- `statusScanner.ts` - Post detail pages
+- `replyScanner.ts` - Notifications and replies
+
+## What happens after unhiding
+
+### If you only unhide (don't whitelist)
+
+- The specific post becomes visible
+- User remains muted on X.com
+- Other posts by the same user stay hidden
+- If you refresh the page, the post will be hidden again
+- A notice reminds you the user is still muted
+
+### If you unmute and whitelist
+
+- All posts by the user on the current page become visible
+- User is unmuted on X.com (can see their posts in notifications, mentions, etc.)
+- User is added to your whitelist (never muted again)
+- All future posts by the user will appear normally
+- Changes persist across page refreshes and browser restarts
+
+<Warning>
+Unmuting and whitelisting is **permanent** until you manually remove the user from your whitelist in the extension popup.
+</Warning>

@@ -1,0 +1,329 @@
+---
+title: Caching strategy
+description: Persistent TTL-based caching implementation using chrome.storage.local for countries, user IDs, and following status
+---
+
+xBlockOrigin implements a persistent TTL-based cache to minimize API requests and improve performance when browsing X.com.
+
+## Cache implementation
+
+The cache is implemented in `Utils/cache.ts` using `chrome.storage.local` for persistence across browser sessions.
+
+### Cache entry structure
+
+```typescript
+type CacheEntry<T> = {
+  value: T
+  expiresAt: number // Unix timestamp in milliseconds
+}
+```
+
+Each cache entry stores:
+- **value** - The cached data (string or boolean)
+- **expiresAt** - Expiration timestamp (when entry becomes invalid)
+
+<Note>
+The cache uses lazy cleanup: expired entries are deleted only when accessed, not on a background schedule.
+</Note>
+
+## Cache instances
+
+Three global cache instances are created with different TTL values:
+
+### Country cache
+
+**TTL:** 24 hours (86,400,000 milliseconds)
+
+**Storage key pattern:** `cache:country:{username}`
+
+**Value type:** `string` (country name)
+
+**Purpose:** Caches user country detection results from `AboutAccountQuery` API
+
+**Example:**
+```json
+{
+  "cache:country:elonmusk": {
+    "value": "United States",
+    "expiresAt": 1709568000000
+  }
+}
+```
+
+**Usage:**
+```typescript
+import { countryCache } from '../Utils/cache'
+
+// Check cache before API call
+let country = await countryCache.get(username)
+if (!country) {
+  country = await getCountry(username)
+  await countryCache.set(username, country)
+}
+```
+
+---
+
+### User ID cache
+
+**TTL:** 24 hours (86,400,000 milliseconds)
+
+**Storage key pattern:** `cache:user:{username}`
+
+**Value type:** `string` (numeric user ID)
+
+**Purpose:** Caches username-to-userId mapping from `UserByScreenName` API
+
+**Example:**
+```json
+{
+  "cache:user:elonmusk": {
+    "value": "44196397",
+    "expiresAt": 1709568000000
+  }
+}
+```
+
+**Usage:**
+```typescript
+import { userIdCache } from '../Utils/cache'
+
+let userId = await userIdCache.get(username)
+if (!userId) {
+  const userData = await getUserData(username)
+  userId = userData.userId
+  await userIdCache.set(username, userId)
+}
+```
+
+---
+
+### Following cache
+
+**TTL:** 5 minutes (300,000 milliseconds)
+
+**Storage key pattern:** `cache:following:{userId}`
+
+**Value type:** `boolean` (whether you follow this user)
+
+**Purpose:** Caches following status from `UserByScreenName` API (shorter TTL since it changes more frequently)
+
+**Example:**
+```json
+{
+  "cache:following:44196397": {
+    "value": true,
+    "expiresAt": 1709482200000
+  }
+}
+```
+
+**Usage:**
+```typescript
+import { followingCache } from '../Utils/cache'
+
+let following = await followingCache.get(userId)
+if (following === null) {
+  const userData = await getUserData(username)
+  following = userData.following
+  await followingCache.set(userId, following)
+}
+```
+
+<Warning>
+Following cache has a shorter 5-minute TTL because users can follow/unfollow accounts frequently, and the extension needs to detect these changes relatively quickly.
+</Warning>
+
+## Cache API
+
+The `createCache<T>(prefix, ttl)` factory function creates cache instances with these methods:
+
+### get(key: string)
+
+Retrieves a value from cache.
+
+**Returns:** `Promise<T | null>`
+- Returns cached value if present and not expired
+- Returns `null` if key doesn't exist or entry is expired
+- Automatically deletes expired entries (lazy cleanup)
+
+**Example:**
+```typescript
+const country = await countryCache.get('elonmusk')
+if (country) {
+  console.log('Cache hit:', country)
+} else {
+  console.log('Cache miss')
+}
+```
+
+---
+
+### set(key: string, value: T)
+
+Stores a value in cache with TTL.
+
+**Returns:** `Promise<void>`
+
+**Behavior:**
+- Calculates `expiresAt = Date.now() + ttl`
+- Stores `{ value, expiresAt }` in `chrome.storage.local`
+- Overwrites existing entries
+
+**Example:**
+```typescript
+await countryCache.set('elonmusk', 'United States')
+// Entry expires in 24 hours
+```
+
+---
+
+### has(key: string)
+
+Checks if a key exists in cache and is not expired.
+
+**Returns:** `Promise<boolean>`
+
+**Behavior:**
+- Returns `true` if key exists and not expired
+- Returns `false` if key doesn't exist or is expired
+- Automatically deletes expired entries (lazy cleanup)
+
+**Example:**
+```typescript
+if (await countryCache.has('elonmusk')) {
+  console.log('Country is cached')
+}
+```
+
+---
+
+### clear()
+
+Deletes all cache entries for this cache instance.
+
+**Returns:** `Promise<void>`
+
+**Behavior:**
+- Fetches all keys from `chrome.storage.local`
+- Removes all keys matching the cache prefix
+- Does not affect other cache instances or storage data
+
+**Example:**
+```typescript
+await countryCache.clear()
+// All cache:country:* entries deleted
+```
+
+## Cache flow in orchestrator
+
+The orchestrator uses a multi-level cache check strategy:
+
+```typescript
+// 1. Check user ID cache
+let userId = await userIdCache.get(username)
+let following = false
+
+if (!userId) {
+  // Cache miss - fetch from API
+  const userData = await getUserData(username)
+  userId = userData.userId
+  following = userData.following
+  
+  // Cache both values
+  await userIdCache.set(username, userId)
+  await followingCache.set(userId, following)
+} else {
+  // User ID cached - check following cache
+  const cachedFollowing = await followingCache.get(userId)
+  
+  if (cachedFollowing !== null) {
+    following = cachedFollowing
+  } else {
+    // Following cache miss - refetch user data
+    const userData = await getUserData(username)
+    following = userData.following
+    await followingCache.set(userId, following)
+  }
+}
+
+// 2. Check country cache
+let country = await countryCache.get(username)
+
+if (!country) {
+  // Cache miss - fetch from API
+  country = await getCountry(username)
+  await countryCache.set(username, country)
+}
+```
+
+<Note>
+This strategy minimizes API calls while ensuring following status is checked more frequently (every 5 minutes) than user IDs and countries (every 24 hours).
+</Note>
+
+## Cache invalidation
+
+Cache entries are invalidated in two ways:
+
+### Time-based expiration (TTL)
+
+Entries automatically expire after their TTL:
+
+| Cache Type | TTL | Reason |
+|------------|-----|--------|
+| Country | 24h | X.com updates country every 30 days |
+| User ID | 24h | User IDs never change (username might) |
+| Following | 5m | Following status changes frequently |
+
+### Manual clearing
+
+The extension does not currently implement manual cache clearing in the UI, but developers can clear cache programmatically:
+
+```typescript
+import { countryCache, userIdCache, followingCache } from './Utils/cache'
+
+// Clear all cache instances
+await countryCache.clear()
+await userIdCache.clear()
+await followingCache.clear()
+```
+
+## Performance impact
+
+Cache hit rates significantly reduce API requests:
+
+**Without cache:**
+- 3 API calls per user (UserByScreenName, AboutAccountQuery, CreateMute)
+- 100 users = 300 API requests
+
+**With cache (after warm-up):**
+- 0-1 API calls per user (only CreateMute for new blacklisted users)
+- 100 users = 0-100 API requests (depends on how many are blacklisted)
+
+<Note>
+The cache is especially effective when browsing the same pages repeatedly or when users appear multiple times across different pages.
+</Note>
+
+## Storage considerations
+
+Cache storage grows over time as more users are encountered:
+
+**Estimated size per user:**
+- Country cache: ~150 bytes per entry
+- User ID cache: ~120 bytes per entry
+- Following cache: ~100 bytes per entry
+- **Total:** ~370 bytes per user
+
+**Example storage usage:**
+- 1,000 users cached: ~370 KB
+- 10,000 users cached: ~3.7 MB
+- 25,000 users cached: ~9.25 MB (approaching 10MB limit)
+
+<Warning>
+Cache entries are not automatically deleted after expiration. They are only removed when accessed (lazy cleanup) or when the cache is manually cleared.
+</Warning>
+
+To prevent hitting the 10MB `chrome.storage.local` quota, consider:
+- Implementing periodic background cleanup of expired entries
+- Adding cache size limits with LRU eviction
+- Providing UI option to clear cache

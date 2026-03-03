@@ -1,0 +1,425 @@
+---
+title: Content scripts
+description: Architecture and lifecycle of xBlockOrigin content scripts that scan and modify X.com pages
+---
+
+xBlockOrigin uses content scripts to scan X.com pages, detect users from blacklisted countries, and hide their posts in real-time.
+
+## Entry point
+
+The content script initializes when the page loads:
+
+```typescript
+// packages/extension/src/Content/index.ts:7
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init)
+} else {
+  init()
+}
+
+function init() {
+  console.log('[xBlockOrigin] Content script loaded')
+  startOrchestrator()
+  setupUnmuteMessageHandler()
+  setupWhitelistListener()
+
+  setTimeout(() => {
+    watchThemeChanges((theme) => {
+      chrome.storage.local.set({ xTheme: theme })
+    })
+  }, 1000)
+}
+```
+
+The initialization process:
+
+1. **Starts the orchestrator** - Main coordination logic for page scanning
+2. **Sets up unmute handler** - Listens for unmute messages from popup
+3. **Sets up whitelist listener** - Watches for newly whitelisted users to unhide their posts
+4. **Detects theme** - Monitors X.com theme changes (light/dim/lights-out)
+
+<Note>
+The theme detection runs after a 1-second delay to ensure X.com's UI has fully loaded.
+</Note>
+
+## Orchestrator architecture
+
+The orchestrator (`orchestrator.ts:286`) coordinates all scanning activity and manages navigation.
+
+### Page detection
+
+The orchestrator detects which X.com page is currently active:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:230
+function getCurrentPage(): string {
+  const path = window.location.pathname
+
+  if (path === '/home' || path === '/') {
+    return 'timeline'
+  }
+
+  if (path.startsWith('/search')) {
+    return 'search'
+  }
+
+  if (path.startsWith('/notifications')) {
+    return 'notifications'
+  }
+
+  // format: /{username}/status/{id}
+  if (path.includes('/status/')) {
+    return 'status'
+  }
+
+  const systemPages = ['explore', 'messages', 'settings', 'compose', 'i']
+  const firstSegment = path.split('/')[1]
+
+  if (firstSegment && !systemPages.includes(firstSegment)) {
+    return 'profile'
+  }
+
+  return 'unknown'
+}
+```
+
+Supported page types:
+
+- **timeline** - Home feed (`/home` or `/`)
+- **search** - Search results (`/search`)
+- **notifications** - Notifications tab (`/notifications`)
+- **status** - Individual post with replies (`/{username}/status/{id}`)
+- **profile** - User profile pages (any path not matching system pages)
+
+### Scanner lifecycle
+
+The orchestrator starts the appropriate scanner for each page type:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:294
+const startScanners = (page: string) => {
+  switch (page) {
+    case 'timeline':
+      cleanupFns.push(scanTimeline(handleUser))
+      break
+    case 'search':
+      cleanupFns.push(scanSearch(handleUser))
+      break
+    case 'notifications':
+      cleanupFns.push(scanReplies(handleUser))
+      break
+    case 'status':
+      cleanupFns.push(scanStatus(handleUser))
+      break
+    case 'profile':
+      cleanupFns.push(scanProfile(handleUser))
+      break
+  }
+}
+```
+
+Each scanner:
+
+- Returns a cleanup function to disconnect observers
+- Receives a `handleUser` callback to process discovered usernames
+- Scans both existing content and watches for new content via `MutationObserver`
+
+<Tip>
+Scanner cleanup functions are automatically called when navigating to a new page to prevent memory leaks.
+</Tip>
+
+### Navigation handling
+
+X.com is a single-page application (SPA), so the orchestrator detects navigation without full page reloads:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:261
+function waitForNavigation(currentUrl: string): Promise<string> {
+  // race between popstate event and polling
+  const popstatePromise = new Promise<string>((resolve) => {
+    const handler = () => {
+      if (window.location.href !== currentUrl) {
+        resolve(window.location.href)
+      }
+    }
+    window.addEventListener('popstate', handler, { once: true })
+  })
+
+  const pollingPromise = new Promise<string>((resolve) => {
+    const checkUrl = () => {
+      if (window.location.href !== currentUrl) {
+        resolve(window.location.href)
+      } else {
+        setTimeout(checkUrl, 100)
+      }
+    }
+    checkUrl()
+  })
+
+  return Promise.race([popstatePromise, pollingPromise])
+}
+```
+
+Navigation detection uses two strategies:
+
+- **popstate event** - Fired when user clicks browser back/forward buttons
+- **URL polling** - Checks every 100ms for URL changes (catches in-app navigation)
+
+The first strategy to detect a change wins the race.
+
+### Main orchestrator loop
+
+The orchestrator runs continuously until stopped:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:314
+const handleNavigation = async () => {
+  let currentUrl = window.location.href
+  startScanners(getCurrentPage())
+
+  while (running) {
+    const newUrl = await waitForNavigation(currentUrl)
+    if (!running) break
+
+    currentUrl = newUrl
+
+    // clear pending API requests on navigation
+    apiQueue.clear()
+
+    // cleanup old scanners
+    cleanupFns.forEach((fn) => fn())
+    cleanupFns.length = 0
+
+    // start new scanners
+    startScanners(getCurrentPage())
+  }
+}
+```
+
+On each navigation:
+
+1. Wait for URL to change
+2. Clear pending API requests (rate limiter queue)
+3. Cleanup old page scanners
+4. Start new scanners for the new page
+
+<Note>
+Clearing the API queue prevents processing users from pages the user has already left.
+</Note>
+
+## User processing flow
+
+When a scanner discovers a username, the orchestrator processes it:
+
+```typescript
+// packages/extension/src/Content/orchestrator.ts:49
+async function processUser(username: string, tweetElement?: Element) {
+  // skip if already processing this user
+  if (inFlightUsers.has(username)) {
+    console.log(`[xBlockOrigin] Skipping @${username} - already in queue`)
+    return
+  }
+  inFlightUsers.add(username)
+
+  // ... user processing logic ...
+
+  // processing complete, remove from in-flight tracker
+  inFlightUsers.delete(username)
+}
+```
+
+The `inFlightUsers` Set prevents race conditions when multiple posts from the same user appear simultaneously.
+
+### Processing steps
+
+1. **Get user ID and following status** - Fetches from X.com API (with cache)
+2. **Check whitelist** - Skip processing if user is whitelisted
+3. **Check following status** - Skip if user is followed (unless `muteFollowing` is enabled)
+4. **Get country** - Fetches user's country from API (with cache)
+5. **Check blacklist** - Compare country against blacklisted countries
+6. **Hide post** - If blacklisted, hide the post immediately
+7. **Mute via API** - Call X.com's mute endpoint for newly discovered users
+8. **Save to database** - Store muted user info locally
+
+The user processing logic is implemented in `orchestrator.ts:49-228`.
+
+## Post hiding
+
+When a post needs to be hidden, the content script creates an overlay:
+
+```typescript
+// packages/extension/src/Content/postHider.ts:12
+export function hidePost(
+  tweetElement: Element,
+  userId: string,
+  username: string,
+  country: string
+): void {
+  // skip if already hidden
+  if (tweetElement.querySelector('[data-testid="xbo-hidden-post"]')) {
+    return
+  }
+
+  // ensure tweet element has relative positioning for overlay
+  if (tweetElement instanceof HTMLElement) {
+    const currentPosition = window.getComputedStyle(tweetElement).position
+    if (currentPosition === 'static') {
+      tweetElement.style.position = 'relative'
+    }
+  }
+
+  // create notice overlay
+  const notice = createHiddenPostNotice(userId, username, country)
+  noticeToTweet.set(notice, tweetElement)
+
+  // track by userId
+  if (!hiddenByUserId.has(userId)) {
+    hiddenByUserId.set(userId, new Set())
+  }
+  hiddenByUserId.get(userId)?.add(notice)
+
+  // append overlay to tweet element
+  tweetElement.appendChild(notice)
+}
+```
+
+The hidden post notice overlay (`hiddenPostNotice.ts:55`):
+
+- Uses `position: absolute` to cover the entire post
+- Applies backdrop blur for visual effect
+- Adapts colors based on X.com theme (light/dim/lights-out)
+- Provides "Unhide" and "Unmute and whitelist" buttons
+
+<Accordion title="Hidden post notice example">
+```typescript
+// packages/extension/src/Content/hiddenPostNotice.ts:55
+export function createHiddenPostNotice(
+  userId: string,
+  username: string,
+  country: string
+): Element {
+  const theme = detectXTheme()
+  const styles = getThemeStyles(theme)
+  const bgColor = getActualBackgroundColor()
+
+  const notice = document.createElement('div')
+  notice.setAttribute('data-xbo-hidden-user', userId)
+  notice.setAttribute('data-testid', 'xbo-hidden-post')
+
+  notice.style.cssText = `
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: ${bgColor};
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    gap: 12px;
+    z-index: 10;
+  `
+
+  // ... button creation ...
+}
+```
+</Accordion>
+
+### Unhiding posts
+
+Users can unhide individual posts:
+
+```typescript
+// packages/extension/src/Content/postHider.ts:45
+export function unhidePost(
+  noticeElement: Element,
+  userId: string,
+  username: string
+): void {
+  // get the tweet element that contains this notice
+  const tweetElement = noticeElement.parentElement
+
+  // remove the overlay element
+  if (tweetElement) {
+    noticeElement.remove()
+
+    // create and insert the unhidden notice after the tweet
+    const unhiddenNotice = createUnhiddenNotice(userId, username)
+
+    // check if there's already an unhidden notice
+    const existingNotice = tweetElement.nextElementSibling
+    if (
+      existingNotice &&
+      existingNotice.getAttribute('data-xbo-unhidden-notice') === userId
+    ) {
+      // replace existing notice
+      existingNotice.replaceWith(unhiddenNotice)
+    } else {
+      // insert after tweet element
+      tweetElement.after(unhiddenNotice)
+    }
+  }
+
+  // cleanup tracking
+  const userSet = hiddenByUserId.get(userId)
+  if (userSet) {
+    userSet.delete(noticeElement)
+    if (userSet.size === 0) {
+      hiddenByUserId.delete(userId)
+    }
+  }
+
+  noticeToTweet.delete(noticeElement)
+}
+```
+
+Unhiding a post:
+
+- Removes the overlay to reveal the original post
+- Displays an "unhidden notice" below the post
+- Keeps the user muted (unless they click "Unmute and whitelist")
+
+## Whitelist integration
+
+The content script listens for whitelist changes to automatically unhide posts:
+
+```typescript
+// packages/extension/src/Content/index.ts:26
+function setupWhitelistListener() {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'sync' && changes.whitelist) {
+      const oldWhitelist = (changes.whitelist.oldValue || []) as WhitelistedUser[]
+      const newWhitelist = (changes.whitelist.newValue || []) as WhitelistedUser[]
+
+      // find newly whitelisted users
+      const oldIds = new Set(oldWhitelist.map((u) => u.userId))
+      const newlyWhitelisted = newWhitelist.filter(
+        (u) => !oldIds.has(u.userId)
+      )
+
+      // unhide posts from newly whitelisted users
+      for (const user of newlyWhitelisted) {
+        console.log(
+          `[xBlockOrigin] Unhiding posts from newly whitelisted user @${user.username}`
+        )
+        unhideAllPostsByUserId(user.userId)
+      }
+    }
+  })
+}
+```
+
+When a user is added to the whitelist (via popup or hidden post notice):
+
+1. The whitelist change event fires
+2. Content script detects the newly whitelisted user
+3. All hidden posts from that user are unhidden automatically
+
+<Tip>
+This ensures a smooth user experience - whitelisting instantly reveals all posts from that user across the page.
+</Tip>

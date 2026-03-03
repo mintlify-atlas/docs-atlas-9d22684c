@@ -1,0 +1,137 @@
+---
+title: Introduction
+description: Automatically mute X.com users from specified countries using X's country detection feature
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="xBlockOrigin Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="xBlockOrigin Hero Dark"
+/>
+
+## Welcome to xBlockOrigin
+
+xBlockOrigin is a powerful browser extension that automatically mutes X.com (Twitter) users from specified countries using X's native country detection feature. Take control of your timeline with intelligent, automated filtering that works seamlessly across Chrome, Edge, and Firefox.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running in minutes with our step-by-step guide
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install the extension for Chrome, Edge, or Firefox
+  </Card>
+</CardGroup>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Instant post hiding" icon="eye-slash">
+    Posts from blacklisted users are hidden immediately with a 50% opacity overlay and 8px blur effect that adapts to your X.com theme
+  </Card>
+  <Card title="Automatic country detection" icon="globe">
+    Uses X.com's AboutAccountQuery API to detect users' originating countries based on their IP geolocation
+  </Card>
+  <Card title="Customizable blacklist" icon="list">
+    Specify which countries to automatically mute with an easy-to-use interface
+  </Card>
+  <Card title="Whitelist support" icon="shield-check">
+    Whitelist specific users to never mute them, regardless of their country
+  </Card>
+  <Card title="Following protection" icon="user-check">
+    Optional setting to skip muting users you follow (enabled by default)
+  </Card>
+  <Card title="Multi-page support" icon="browser">
+    Works on timeline, profiles, search results, post detail pages with replies, and notifications
+  </Card>
+  <Card title="Persistent cache" icon="database">
+    Country and following status cached for 24 hours to reduce API calls and improve performance
+  </Card>
+  <Card title="Mute database" icon="chart-line">
+    Tracks all automatically muted users with username, country, and timestamp for easy management
+  </Card>
+  <Card title="CSV export" icon="file-export">
+    Export your muted users list to CSV format for backup or analysis
+  </Card>
+  <Card title="Cross-browser" icon="browsers">
+    Supports Chrome/Edge (Manifest V3) and Firefox (Manifest V2)
+  </Card>
+</CardGroup>
+
+## How it works
+
+When you browse X.com, xBlockOrigin works intelligently in the background:
+
+<Steps>
+  <Step title="Scan pages">
+    The extension scans pages for user profiles across timeline, search, profiles, post detail pages, and notifications
+  </Step>
+  <Step title="Fetch user data">
+    Fetches user ID and following status from X.com's UserByScreenName API in a single optimized call
+  </Step>
+  <Step title="Check whitelist">
+    Verifies if the user is whitelisted and skips processing if they are
+  </Step>
+  <Step title="Check following status">
+    If "mute following" is disabled, skips users you follow to protect your connections
+  </Step>
+  <Step title="Query country">
+    Queries X.com's AboutAccountQuery API to get the user's originating country (cached for 24 hours)
+  </Step>
+  <Step title="Check blacklist">
+    Compares the user's country against your configured blacklist
+  </Step>
+  <Step title="Hide posts instantly">
+    Immediately overlays matching posts with a 50% opacity background and 8px blur, while preserving all post functionality
+  </Step>
+  <Step title="Mute via API">
+    Automatically mutes the user via X.com's API if this is the first time encountering them
+  </Step>
+  <Step title="Save to database">
+    Records the muted user to a local database for tracking and export
+  </Step>
+</Steps>
+
+<Note>
+The overlay approach preserves all post functionality - click handlers remain intact so you can interact with the post after unhiding it if needed.
+</Note>
+
+## Privacy first
+
+xBlockOrigin respects your privacy:
+
+- All data is stored locally on your device
+- No data is sent to external servers
+- Only communicates with X.com's official API
+- Uses Chrome's secure storage APIs for data persistence
+
+## Technical foundation
+
+<CardGroup cols={2}>
+  <Card title="Chrome/Edge" icon="chrome">
+    Built with Manifest V3 using modern service workers for optimal performance
+  </Card>
+  <Card title="Firefox" icon="firefox">
+    Built with Manifest V2 using persistent background pages for reliable operation
+  </Card>
+</CardGroup>
+
+<Warning>
+The extension requires an active X.com session to work. Country detection is based on X's geolocation of the user's IP and is updated by X every 30 days.
+</Warning>
+
+## Get started
+
+Ready to take control of your X.com experience? Follow our [quick start guide](/quickstart) to install the extension and mute your first country in minutes.
